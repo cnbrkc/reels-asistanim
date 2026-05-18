@@ -13,6 +13,50 @@ st.set_page_config(page_title="otoXtra Asistanım", page_icon="🏎️", layout=
 st.title("🏎️ otoXtra — Otomatik Reels Asistanı")
 st.write("Videonun konusunu, süresini ve varsa özel notunu yaz; otoXtra gerisini halletsin!")
 
+# Uygulama durumu (sonuçların sayfa yenilenince kaybolmaması için)
+if "sonuc" not in st.session_state:
+    st.session_state.sonuc = None
+
+
+def pixabay_muzik_bul_ve_indir(pixabay_key: str, ilk_terim: str, cikti_dosyasi: str):
+    """
+    Pixabay Audio API'den uygun dosyayı bulup indirir.
+    ilk_terim sonuç vermezse alternatif terimlerle yeniden dener.
+    """
+    fallback_terimler = ["upbeat", "phonk", "cinematic", "chill", "ambient"]
+    terimler = [ilk_terim] + [t for t in fallback_terimler if t != ilk_terim]
+
+    for terim in terimler:
+        params = {"key": pixabay_key, "q": terim, "per_page": 5}
+        cevap = requests.get("https://pixabay.com/api/audio/", params=params, timeout=20)
+        if cevap.status_code != 200:
+            continue
+
+        veri = cevap.json()
+        if veri.get("totalHits", 0) <= 0:
+            continue
+
+        for hit in veri.get("hits", []):
+            audio_urls = hit.get("audio") or {}
+            indirme_linki = (
+                audio_urls.get("url")
+                or audio_urls.get("large")
+                or audio_urls.get("medium")
+                or audio_urls.get("small")
+                or audio_urls.get("tiny")
+                or hit.get("previewURL")
+            )
+            if not indirme_linki:
+                continue
+
+            muzik_indir = requests.get(indirme_linki, timeout=30)
+            if muzik_indir.status_code == 200 and muzik_indir.content:
+                with open(cikti_dosyasi, "wb") as f:
+                    f.write(muzik_indir.content)
+                return True, terim
+
+    return False, ilk_terim
+
 # API Şifreleri
 try:
     gemini_key = st.secrets["GEMINI_API_KEY"]
@@ -136,63 +180,86 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
             muzik_dosyasi = "muzik.mp3"
             muzik_basarili = False
             
+            arama_kelimesi = "upbeat"
             try:
                 arama_kelimesi = veri.get('muzik_turu', 'upbeat').strip().split()[0]
-                
-                params = {"key": pixabay_key, "q": arama_kelimesi, "per_page": 5}
-                pixabay_cevap = requests.get("https://pixabay.com/api/audio/", params=params).json()
-                
-                if pixabay_cevap.get("totalHits", 0) > 0:
-                    for hit in pixabay_cevap["hits"]:
-                        indirme_linki = hit.get("audio", hit.get("preview"))
-                        if indirme_linki:
-                            muzik_indir = requests.get(indirme_linki)
-                            with open(muzik_dosyasi, "wb") as f:
-                                f.write(muzik_indir.content)
-                            muzik_basarili = True
-                            break
+                muzik_basarili, kullanilan_terim = pixabay_muzik_bul_ve_indir(
+                    pixabay_key=pixabay_key,
+                    ilk_terim=arama_kelimesi,
+                    cikti_dosyasi=muzik_dosyasi
+                )
+                arama_kelimesi = kullanilan_terim
             except Exception as m_hata:
                 st.warning(f"Müzik aranırken sorun yaşandı: {m_hata}")
 
-            # 5. SONUÇLARI GÖSTER
-            st.success("✅ otoXtra İçeriği Başarıyla Üretti!")
-            
-            st.markdown("### 🎧 Medya Dosyaları")
-            mcol1, mcol2 = st.columns(2)
-            with mcol1:
-                st.markdown("**🎙️ Seslendirme (AI Studio)**")
-                if ses_basarili:
-                    st.audio(ses_dosyasi)
-                    with open(ses_dosyasi, "rb") as f:
-                        st.download_button(f"⬇️ {secilen_ses_ingilizce} Sesini İndir (.wav)", f, file_name="seslendirme.wav", mime="audio/wav")
-            with mcol2:
-                st.markdown(f"**🎵 Arka Plan Müziği** (Aranan: *{arama_kelimesi.upper()}*)")
-                if muzik_basarili:
-                    st.audio(muzik_dosyasi)
-                    with open(muzik_dosyasi, "rb") as file:
-                        st.download_button("⬇️ Müziği İndir (.mp3)", file, file_name="muzik.mp3", mime="audio/mp3")
-                else:
-                    st.warning("Uygun telifsiz müzik bulunamadı. Lütfen Pixabay'dan manuel bakınız.")
-            
-            st.divider()
-
-            st.markdown("### 📝 otoXtra Metin İçerikleri")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("1️⃣ Reels Açıklaması (Caption & Etiketler)")
-                st.text_area("Direkt kopyalayıp yapıştır:", veri["reels_aciklamasi"], height=250)
-                
-                st.subheader("3️⃣ Alt Metin (Gelişmiş Ayarlar)")
-                st.code(veri["alt_metin"], language="text")
-
-            with col2:
-                st.subheader("2️⃣ Kapak Başlığı Alternatifleri")
-                st.text_area("Videoya eklenecek metinler:", veri["kapak_basliklari"], height=250)
-                
-                st.subheader("🎙️ Seslendirme Metni (Kontrol İçin)")
-                st.info(veri["seslendirme_metni"])
+            # Sonucu state'e al (download sonrası sayfa yeniden çizilse bile içerik kalsın)
+            st.session_state.sonuc = {
+                "veri": veri,
+                "ses_basarili": ses_basarili,
+                "muzik_basarili": muzik_basarili,
+                "ses_dosyasi": ses_dosyasi,
+                "muzik_dosyasi": muzik_dosyasi,
+                "secilen_ses_ingilizce": secilen_ses_ingilizce,
+                "arama_kelimesi": arama_kelimesi
+            }
 
         except Exception as e:
             st.error("Sistemde bir hata oluştu ve işlem tamamlanamadı.")
             st.code(f"Hata Detayı: {str(e)}")
+
+# 5. SONUÇLARI GÖSTER (state varsa ekranda sabit kalsın)
+if st.session_state.sonuc:
+    sonuc = st.session_state.sonuc
+    veri = sonuc["veri"]
+    ses_basarili = sonuc["ses_basarili"]
+    muzik_basarili = sonuc["muzik_basarili"]
+    ses_dosyasi = sonuc["ses_dosyasi"]
+    muzik_dosyasi = sonuc["muzik_dosyasi"]
+    secilen_ses_ingilizce = sonuc["secilen_ses_ingilizce"]
+    arama_kelimesi = sonuc["arama_kelimesi"]
+
+    st.success("✅ otoXtra İçeriği Başarıyla Üretti!")
+
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        if st.button("🔄 Yeniden Sorgu (Temizle)"):
+            st.session_state.sonuc = None
+            st.rerun()
+
+    st.markdown("### 🎧 Medya Dosyaları")
+    mcol1, mcol2 = st.columns(2)
+    with mcol1:
+        st.markdown("**🎙️ Seslendirme (AI Studio)**")
+        if ses_basarili and os.path.exists(ses_dosyasi):
+            st.audio(ses_dosyasi)
+            with open(ses_dosyasi, "rb") as f:
+                st.download_button(f"⬇️ {secilen_ses_ingilizce} Sesini İndir (.wav)", f, file_name="seslendirme.wav", mime="audio/wav")
+        else:
+            st.warning("Ses dosyası bulunamadı. Lütfen tekrar üretin.")
+    with mcol2:
+        st.markdown(f"**🎵 Arka Plan Müziği** (Aranan: *{arama_kelimesi.upper()}*)")
+        if muzik_basarili and os.path.exists(muzik_dosyasi):
+            st.audio(muzik_dosyasi)
+            with open(muzik_dosyasi, "rb") as file:
+                st.download_button("⬇️ Müziği İndir (.mp3)", file, file_name="muzik.mp3", mime="audio/mp3")
+        else:
+            st.warning("Uygun telifsiz müzik bulunamadı. Lütfen Pixabay'dan manuel bakınız.")
+
+    st.divider()
+
+    st.markdown("### 📝 otoXtra Metin İçerikleri")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("1️⃣ Reels Açıklaması (Caption & Etiketler)")
+        st.text_area("Direkt kopyalayıp yapıştır:", veri["reels_aciklamasi"], height=250)
+
+        st.subheader("3️⃣ Alt Metin (Gelişmiş Ayarlar)")
+        st.code(veri["alt_metin"], language="text")
+
+    with col2:
+        st.subheader("2️⃣ Kapak Başlığı Alternatifleri")
+        st.text_area("Videoya eklenecek metinler:", veri["kapak_basliklari"], height=250)
+
+        st.subheader("🎙️ Seslendirme Metni (Kontrol İçin)")
+        st.info(veri["seslendirme_metni"])
