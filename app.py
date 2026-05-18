@@ -1,5 +1,6 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 import edge_tts
 import asyncio
@@ -40,9 +41,9 @@ if st.button("🚀 Reels İçeriğini Üret!"):
     with st.spinner("Senaryo yazılıyor, seslendiriliyor ve müzik aranıyor... (Bu işlem 10-15 saniye sürebilir)"):
         try:
             # -----------------------------------------------------
-            # 1. GEMINI İLE İÇERİK ÜRETİMİ
+            # 1. GEMINI İLE İÇERİK ÜRETİMİ (YENİ SÜRÜM KOD)
             # -----------------------------------------------------
-            genai.configure(api_key=gemini_key)
+            client = genai.Client(api_key=gemini_key)
             system_prompt = """Sen uzman bir sosyal medya danışmanı ve Reels metin yazarısın. 
 Kullanıcının verdiği video fikrine göre şunları oluştur:
 1. 'seslendirme_metni': Videoda arka planda okunacak kısa, dikkat çekici, enerjik ve akıcı bir Türkçe metin.
@@ -55,8 +56,14 @@ Kullanıcının verdiği video fikrine göre şunları oluştur:
   "reels_aciklamasi": "Evde kendi kafenizi yaratın ☕✨ #kahve #tarif",
   "muzik_turu": "chill"
 }"""
-            model = genai.GenerativeModel(model_name="gemini-1.5-flash", system_instruction=system_prompt)
-            response = model.generate_content(video_icerigi)
+            
+            response = client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=video_icerigi,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                )
+            )
             
             # Gelen cevabı temizle ve algıla
             cevap_metni = response.text.strip()
@@ -70,7 +77,7 @@ Kullanıcının verdiği video fikrine göre şunları oluştur:
             # -----------------------------------------------------
             # 2. SESLENDİRME (METİNDEN SESE)
             # -----------------------------------------------------
-            secilen_ses = ses_secimi.split()[0] # Seçili sesi ayıklar
+            secilen_ses = ses_secimi.split()[0]
             ses_dosyasi = "seslendirme.mp3"
             
             async def tts_olustur():
@@ -99,7 +106,7 @@ Kullanıcının verdiği video fikrine göre şunları oluştur:
                             f.write(muzik_indir.content)
                         muzik_basarili = True
             except Exception as e:
-                pass # Hata olursa uygulama çökmesin diye es geçiyoruz
+                pass 
 
             # -----------------------------------------------------
             # 4. SONUÇLARI EKRANA YAZDIRMA
