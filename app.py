@@ -15,13 +15,13 @@ st.write("Videonun konusunu yaz; seslendirmeni, açıklamanı ve videoya uygun m
 # Sol menü - API Ayarları
 with st.sidebar:
     st.header("🔑 Ayarlar")
-    st.write("Güvenlik için API anahtarlarınızı buraya girin (Kodlara yazmadığımız için şifreleriniz başkaları tarafından görünmez).")
+    st.write("Güvenlik için API anahtarlarınızı buraya girin.")
     gemini_key = st.text_input("Google AI Studio API Key", type="password")
     pixabay_key = st.text_input("Pixabay API Key", type="password")
     ses_secimi = st.selectbox("Seslendiren Seçimi", ["tr-TR-AhmetNeural (Erkek)", "tr-TR-EmelNeural (Kadın)"])
 
 # Kullanıcıdan video içeriği alma
-video_icerigi = st.text_area("Videoda ne var? Kısaca anlat:", height=150, placeholder="Örn: Evde kolay soğuk kahve yapımı. Önce bardağa buzu koyuyorum, sonra süt ekliyorum, en son üzerine espresso döküyorum...")
+video_icerigi = st.text_area("Videoda ne var? Kısaca anlat:", height=150)
 
 # Asenkron (Ses) oluşturma fonksiyonu
 def run_async(coroutine):
@@ -40,43 +40,29 @@ if st.button("🚀 Reels İçeriğini Üret!"):
 
     with st.spinner("Senaryo yazılıyor, seslendiriliyor ve müzik aranıyor... (Bu işlem 10-15 saniye sürebilir)"):
         try:
-            # -----------------------------------------------------
-            # 1. GEMINI İLE İÇERİK ÜRETİMİ (YENİ SÜRÜM KOD)
-            # -----------------------------------------------------
+            # 1. GEMINI İLE İÇERİK ÜRETİMİ
             client = genai.Client(api_key=gemini_key)
             system_prompt = """Sen uzman bir sosyal medya danışmanı ve Reels metin yazarısın. 
 Kullanıcının verdiği video fikrine göre şunları oluştur:
 1. 'seslendirme_metni': Videoda arka planda okunacak kısa, dikkat çekici, enerjik ve akıcı bir Türkçe metin.
-2. 'reels_aciklamasi': Videonun altına yazılacak, emojiler ve hashtagler içeren etkileşim alacak Türkçe açıklama (caption).
+2. 'reels_aciklamasi': Videonun altına yazılacak, emojiler ve hashtagler içeren etkileşim alacak Türkçe açıklama.
 3. 'muzik_turu': Bu videonun duygu durumuna (mood) uygun, İngilizce tek kelimelik bir müzik türü (örneğin: upbeat, chill, lofi, vlog, cinematic, epic).
 
-Çıktıyı SADECE geçerli bir JSON formatında ver. Başka hiçbir şey yazma. Örnek:
-{
-  "seslendirme_metni": "Evde mükemmel soğuk kahveyi yapmak sandığından çok daha kolay! İşte sırrım...",
-  "reels_aciklamasi": "Evde kendi kafenizi yaratın ☕✨ #kahve #tarif",
-  "muzik_turu": "chill"
-}"""
+Çıktıyı SADECE geçerli bir JSON formatında ver."""
             
             response = client.models.generate_content(
                 model='gemini-1.5-flash',
                 contents=video_icerigi,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
+                    response_mime_type="application/json", # BU YENİ: Gemini'yi direkt JSON vermeye zorlar, hata riskini sıfırlar.
                 )
             )
             
-            # Gelen cevabı temizle ve algıla
-            cevap_metni = response.text.strip()
-            if cevap_metni.startswith("```json"):
-                cevap_metni = cevap_metni[7:-3]
-            elif cevap_metni.startswith("```"):
-                cevap_metni = cevap_metni[3:-3]
-                
-            veri = json.loads(cevap_metni)
+            # Gelen cevabı direkt okuyoruz (temizlemeye gerek kalmadı)
+            veri = json.loads(response.text)
             
-            # -----------------------------------------------------
             # 2. SESLENDİRME (METİNDEN SESE)
-            # -----------------------------------------------------
             secilen_ses = ses_secimi.split()[0]
             ses_dosyasi = "seslendirme.mp3"
             
@@ -86,9 +72,7 @@ Kullanıcının verdiği video fikrine göre şunları oluştur:
                 
             run_async(tts_olustur())
             
-            # -----------------------------------------------------
             # 3. PİXABAY'DAN MÜZİK BULMA VE İNDİRME
-            # -----------------------------------------------------
             muzik_dosyasi = "muzik.mp3"
             muzik_basarili = False
             
@@ -106,11 +90,9 @@ Kullanıcının verdiği video fikrine göre şunları oluştur:
                             f.write(muzik_indir.content)
                         muzik_basarili = True
             except Exception as e:
-                pass 
+                st.warning(f"Müzik aranırken ufak bir sorun oldu: {str(e)}")
 
-            # -----------------------------------------------------
             # 4. SONUÇLARI EKRANA YAZDIRMA
-            # -----------------------------------------------------
             st.success("✅ İçerik Başarıyla Oluşturuldu!")
             
             col1, col2 = st.columns(2)
@@ -137,5 +119,6 @@ Kullanıcının verdiği video fikrine göre şunları oluştur:
                     st.warning("Uygun müzik otomatik indirilemedi. Lütfen Pixabay'dan manuel seçin.")
 
         except Exception as e:
-            st.error("Bir hata oluştu. Muhtemelen yapay zeka beklenen formatta cevap veremedi.")
-            st.info("Lütfen metin kutusunu biraz daha detaylı yazmayı deneyin.")
+            # BU KISIM ÇOK ÖNEMLİ: Hatayı gizlemek yerine ekrana yazdırıyoruz!
+            st.error("Sistemde bir hata oluştu ve işlem tamamlanamadı.")
+            st.code(f"Hata Detayı: {str(e)}") # Artık gizli kalmayacak
