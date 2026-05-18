@@ -68,7 +68,6 @@ with st.sidebar:
                 
                 if pixabay_cevap.get("totalHits", 0) > 0:
                     for hit in pixabay_cevap["hits"]:
-                        indirme_linki = hit.get("audio", hit.get("preview"))
                         # Pixabay audio yanıtında "audio" alanı sözlük döner.
                         # En kaliteli dosyadan başlayarak indir.
                         audio_urls = hit.get("audio") or {}
@@ -82,10 +81,6 @@ with st.sidebar:
                         )
                         if indirme_linki:
                             muzik_indir = requests.get(indirme_linki)
-                            with open(muzik_dosyasi, "wb") as f:
-                                f.write(muzik_indir.content)
-                            muzik_basarili = True
-                            break
                             if muzik_indir.status_code == 200:
                                 with open(muzik_dosyasi, "wb") as f:
                                     f.write(muzik_indir.content)
@@ -94,44 +89,6 @@ with st.sidebar:
             except Exception as m_hata:
                 st.warning(f"Müzik aranırken sorun yaşandı: {m_hata}")
 
-            # 5. SONUÇLARI GÖSTER
-            st.success("✅ otoXtra İçeriği Başarıyla Üretti!")
-            
-            st.markdown("### 🎧 Medya Dosyaları")
-            mcol1, mcol2 = st.columns(2)
-            with mcol1:
-                st.markdown("**🎙️ Seslendirme (AI Studio)**")
-                if ses_basarili:
-                    st.audio(ses_dosyasi)
-                    with open(ses_dosyasi, "rb") as f:
-                        st.download_button(f"⬇️ {secilen_ses_ingilizce} Sesini İndir (.wav)", f, file_name="seslendirme.wav", mime="audio/wav")
-            with mcol2:
-                st.markdown(f"**🎵 Arka Plan Müziği** (Aranan: *{arama_kelimesi.upper()}*)")
-                if muzik_basarili:
-                    st.audio(muzik_dosyasi)
-                    with open(muzik_dosyasi, "rb") as file:
-                        st.download_button("⬇️ Müziği İndir (.mp3)", file, file_name="muzik.mp3", mime="audio/mp3")
-                else:
-                    st.warning("Uygun telifsiz müzik bulunamadı. Lütfen Pixabay'dan manuel bakınız.")
-            
-            st.divider()
-
-            st.markdown("### 📝 otoXtra Metin İçerikleri")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("1️⃣ Reels Açıklaması (Caption & Etiketler)")
-                st.text_area("Direkt kopyalayıp yapıştır:", veri["reels_aciklamasi"], height=250)
-                
-                st.subheader("3️⃣ Alt Metin (Gelişmiş Ayarlar)")
-                st.code(veri["alt_metin"], language="text")
-
-            with col2:
-                st.subheader("2️⃣ Kapak Başlığı Alternatifleri")
-                st.text_area("Videoya eklenecek metinler:", veri["kapak_basliklari"], height=250)
-                
-                st.subheader("🎙️ Seslendirme Metni (Kontrol İçin)")
-                st.info(veri["seslendirme_metni"])
             # Sonucu state'e al (download sonrası sayfa yeniden çizilse bile içerik kalsın)
             st.session_state.sonuc = {
                 "veri": veri,
