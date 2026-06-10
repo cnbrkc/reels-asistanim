@@ -89,6 +89,9 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
         st.warning("Lütfen videoda ne olduğunu yazın.")
         st.stop()
 
+    # Yeni üretim denemesi eski sonucu geçersiz kılar; hata olursa bayat çıktı gösterilmez.
+    st.session_state.sonuc = None
+
     with st.spinner("otoXtra içerik üretiyor... (Google sunucuları yoğunsa bu işlem 30 sn sürebilir)"):
         try:
             client = genai.Client(api_key=gemini_key)
