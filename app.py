@@ -5,7 +5,7 @@ import json
 import requests
 import wave
 import os
-import time  # Google meşgulse beklemek için yeni ekledik
+import time
 
 # Sayfa ayarları
 st.set_page_config(page_title="otoXtra Asistanım", page_icon="🏎️", layout="wide")
@@ -57,6 +57,67 @@ def pixabay_muzik_bul_ve_indir(pixabay_key: str, ilk_terim: str, cikti_dosyasi: 
 
     return False, ilk_terim
 
+
+def metin_uret_cascade(client, system_prompt: str, video_icerigi: str):
+    """
+    Metin üretimini model cascade ile dener:
+    1. gemini-2.5-pro  (en güçlü)
+    2. gemini-2.5-flash
+    3. gemini-2.0-flash
+    429 (kota dolu) hatası alınca bir sonraki modele geçer.
+    Tüm modeller tükenirse Exception fırlatır.
+    """
+    MODELLER = [
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+    ]
+
+    son_hata = None
+
+    for model_adi in MODELLER:
+        for deneme in range(2):  # Her model için 2 deneme (503 için)
+            try:
+                st.info(f"🤖 Deneniyor: **{model_adi}**", icon="⚙️")
+                response = client.models.generate_content(
+                    model=model_adi,
+                    contents=video_icerigi,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        response_mime_type="application/json",
+                    )
+                )
+                veri = json.loads(response.text)
+                st.success(f"✅ Metin üretimi başarılı: **{model_adi}**")
+                return veri, model_adi  # Başarılı → döndür
+
+            except Exception as e:
+                hata_str = str(e)
+                son_hata = e
+
+                if "429" in hata_str or "RESOURCE_EXHAUSTED" in hata_str:
+                    # Kota dolu → bu modeli bırak, bir sonrakine geç
+                    st.warning(f"⚠️ {model_adi} kotası dolu, sonraki modele geçiliyor...")
+                    break  # İç döngüden çık, dış döngü bir sonraki modeli dener
+
+                elif "503" in hata_str and deneme < 1:
+                    # Sunucu meşgul → biraz bekle, aynı modeli tekrar dene
+                    time.sleep(3)
+                    continue
+
+                else:
+                    # Başka bir hata → direkt fırlat
+                    raise e
+
+    # Tüm modeller denendi, hepsi başarısız
+    raise Exception(
+        f"Tüm modeller kota limitine ulaştı veya hata verdi.\n"
+        f"Son hata: {son_hata}\n\n"
+        f"Lütfen birkaç saat bekleyin veya Google AI Studio'da "
+        f"billing'i aktif ederek kota limitini kaldırın: https://aistudio.google.com"
+    )
+
+
 # API Şifreleri
 try:
     gemini_key = st.secrets["GEMINI_API_KEY"]
@@ -92,7 +153,7 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
     with st.spinner("otoXtra içerik üretiyor... (Google sunucuları yoğunsa bu işlem 30 sn sürebilir)"):
         try:
             client = genai.Client(api_key=gemini_key)
-            
+
             # 1. KURALLARI TXT DOSYASINDAN OKUMA
             try:
                 with open("kurallar.txt", "r", encoding="utf-8") as f:
@@ -100,7 +161,7 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
             except FileNotFoundError:
                 st.error("⚠️ 'kurallar.txt' dosyası bulunamadı! Lütfen GitHub deponuza bu isimde bir dosya ekleyin.")
                 st.stop()
-            
+
             system_prompt = BENIM_GEM_KURALLARIM + """
             
             ÖNEMLİ SİSTEM TALİMATI: 
@@ -113,33 +174,15 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
               "muzik_turu": "Bu videonun moduna uygun TEK KELİMELİK İNGİLİZCE müzik türü (örn: upbeat, drift, phonk)"
             }
             """
-            
-            # 2. METİN ÜRETİMİ (Hata verirse 3 kez dener)
-            veri = None
-            for deneme in range(3):
-                try:
-                    response = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=video_icerigi,
-                        config=types.GenerateContentConfig(
-                            system_instruction=system_prompt,
-                            response_mime_type="application/json", 
-                        )
-                    )
-                    veri = json.loads(response.text)
-                    break # Başarılı olursa döngüden çık
-                except Exception as e:
-                    if "503" in str(e) and deneme < 2:
-                        time.sleep(3) # 3 saniye bekle tekrar dene
-                        continue
-                    else:
-                        raise e # Artık mecburen hatayı ver
-            
+
+            # 2. METİN ÜRETİMİ — MODEL CASCADE
+            veri, kullanilan_model = metin_uret_cascade(client, system_prompt, video_icerigi)
+
             # 3. AI STUDIO SES ÜRETİMİ (Hata verirse 3 kez dener)
             secilen_ses_ingilizce = ses_secimi.split(" ")[0]
             ses_dosyasi = "seslendirme.wav"
             ses_basarili = False
-            
+
             for deneme in range(3):
                 try:
                     tts_response = client.models.generate_content(
@@ -163,24 +206,24 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
                         wf.setsampwidth(2)
                         wf.setframerate(24000)
                         wf.writeframes(audio_data)
-                    
+
                     ses_basarili = True
-                    break # Başarılı olursa döngüden çık
+                    break
                 except Exception as ses_hata:
                     if "503" in str(ses_hata) and deneme < 2:
-                        time.sleep(4) # 4 saniye dinlenip tekrar Google'a istek atar
+                        time.sleep(4)
                         continue
                     else:
                         if deneme == 2:
                             st.warning("Google Ses Sistemleri şu an aşırı yoğun. Ses üretilemedi, lütfen 1-2 dakika sonra tekrar üretime bas.")
                             st.code(str(ses_hata))
                         break
-            
+
             # 4. MÜZİK BULMA
             muzik_dosyasi = "muzik.mp3"
             muzik_basarili = False
-            
             arama_kelimesi = "upbeat"
+
             try:
                 arama_kelimesi = veri.get('muzik_turu', 'upbeat').strip().split()[0]
                 muzik_basarili, kullanilan_terim = pixabay_muzik_bul_ve_indir(
@@ -192,7 +235,7 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
             except Exception as m_hata:
                 st.warning(f"Müzik aranırken sorun yaşandı: {m_hata}")
 
-            # Sonucu state'e al (download sonrası sayfa yeniden çizilse bile içerik kalsın)
+            # Sonucu state'e al
             st.session_state.sonuc = {
                 "veri": veri,
                 "ses_basarili": ses_basarili,
@@ -200,7 +243,8 @@ if st.button("🚀 otoXtra İçeriğini Üret!"):
                 "ses_dosyasi": ses_dosyasi,
                 "muzik_dosyasi": muzik_dosyasi,
                 "secilen_ses_ingilizce": secilen_ses_ingilizce,
-                "arama_kelimesi": arama_kelimesi
+                "arama_kelimesi": arama_kelimesi,
+                "kullanilan_model": kullanilan_model,
             }
 
         except Exception as e:
@@ -217,8 +261,9 @@ if st.session_state.sonuc:
     muzik_dosyasi = sonuc["muzik_dosyasi"]
     secilen_ses_ingilizce = sonuc["secilen_ses_ingilizce"]
     arama_kelimesi = sonuc["arama_kelimesi"]
+    kullanilan_model = sonuc.get("kullanilan_model", "bilinmiyor")
 
-    st.success("✅ otoXtra İçeriği Başarıyla Üretti!")
+    st.success(f"✅ otoXtra İçeriği Başarıyla Üretti! *(Model: {kullanilan_model})*")
 
     c1, c2 = st.columns([3, 1])
     with c2:
