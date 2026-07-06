@@ -32,11 +32,104 @@ VIDEO_ANALIZ_MODELLERI = [
     "gemini-1.5-flash",
 ]
 
+THREADS_MODELLERI = [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+]
+
+MODEL_DURUM_DOSYASI = "model_durumlari.json"
+MODEL_BEKLEME_SURESI_SN = 24 * 60 * 60
+HATA_SAKLAMA_SURESI_SN = 7 * 24 * 60 * 60
+
 
 def markdown_temizle(metin: str) -> str:
     if not isinstance(metin, str):
         return ""
     return re.sub(r"[*_`]+", "", metin).strip()
+
+
+def _simdi_ts() -> int:
+    return int(time.time())
+
+
+def model_durumlarini_yukle() -> dict:
+    temel = {"son_basari": {}, "hatalar": []}
+    if not os.path.exists(MODEL_DURUM_DOSYASI):
+        return temel
+
+    try:
+        with open(MODEL_DURUM_DOSYASI, "r", encoding="utf-8") as f:
+            veri = json.load(f)
+        if not isinstance(veri, dict):
+            return temel
+        veri.setdefault("son_basari", {})
+        veri.setdefault("hatalar", [])
+        return veri
+    except Exception:
+        return temel
+
+
+def model_durumlarini_kaydet(veri: dict):
+    try:
+        with open(MODEL_DURUM_DOSYASI, "w", encoding="utf-8") as f:
+            json.dump(veri, f, ensure_ascii=False, indent=2)
+    except Exception:
+        # Yazma izni yoksa uygulamayı durdurmamak için sessizce geçiyoruz.
+        pass
+
+
+def model_durumlarini_temizle(veri: dict):
+    simdi = _simdi_ts()
+    temiz_hatalar = []
+    for kayit in veri.get("hatalar", []):
+        zaman = int(kayit.get("zaman", 0))
+        if simdi - zaman <= HATA_SAKLAMA_SURESI_SN:
+            temiz_hatalar.append(kayit)
+    veri["hatalar"] = temiz_hatalar
+
+
+def model_hata_ekle(veri: dict, kategori: str, model: str, hata_metni: str):
+    veri.setdefault("hatalar", []).append(
+        {
+            "kategori": kategori,
+            "model": model,
+            "hata": hata_metni[:240],
+            "zaman": _simdi_ts(),
+        }
+    )
+
+
+def model_basari_isle(veri: dict, kategori: str, model: str):
+    veri.setdefault("son_basari", {})[kategori] = {"model": model, "zaman": _simdi_ts()}
+
+
+def model_karantinada_mi(veri: dict, kategori: str, model: str) -> bool:
+    simdi = _simdi_ts()
+    en_son_hata = 0
+    for kayit in veri.get("hatalar", []):
+        if kayit.get("kategori") == kategori and kayit.get("model") == model:
+            en_son_hata = max(en_son_hata, int(kayit.get("zaman", 0)))
+    if en_son_hata == 0:
+        return False
+    return simdi - en_son_hata < MODEL_BEKLEME_SURESI_SN
+
+
+def modelleri_sirala_ve_filtrele(model_listesi, kategori: str, model_durumlari: dict):
+    son = model_durumlari.get("son_basari", {}).get(kategori, {})
+    son_model = son.get("model") if isinstance(son, dict) else None
+
+    sirali = []
+    if son_model in model_listesi and not model_karantinada_mi(model_durumlari, kategori, son_model):
+        sirali.append(son_model)
+
+    for model in model_listesi:
+        if model in sirali:
+            continue
+        if model_karantinada_mi(model_durumlari, kategori, model):
+            continue
+        sirali.append(model)
+
+    return sirali
 
 
 def kapak_basliklarini_formatla(liste) -> str:
@@ -72,11 +165,28 @@ def guvenli_json_yukle(response_text: str):
         return json.loads(temiz)
 
 
-def metin_uret(client, model_listesi, video_icerigi, system_prompt, response_schema, log_ekle):
+def metin_uret(
+    client,
+    model_listesi,
+    video_icerigi,
+    system_prompt,
+    response_schema,
+    log_ekle,
+    deneme_sayisi=2,
+    kategori="metin",
+):
     son_hata = None
-    for model_adi in model_listesi:
+    model_durumlari = model_durumlarini_yukle()
+    model_durumlarini_temizle(model_durumlari)
+    model_durumlarini_kaydet(model_durumlari)
+
+    aday_modeller = modelleri_sirala_ve_filtrele(model_listesi, kategori, model_durumlari)
+    if not aday_modeller:
+        raise Exception(f"{kategori} için 24 saat karantinada olmayan model yok. Süre dolunca tekrar dene.")
+
+    for model_adi in aday_modeller:
         log_ekle(f"🧠 Metin üretimi deneniyor: {model_adi}")
-        for deneme in range(2):
+        for deneme in range(deneme_sayisi):
             try:
                 response = client.models.generate_content(
                     model=model_adi,
@@ -88,12 +198,18 @@ def metin_uret(client, model_listesi, video_icerigi, system_prompt, response_sch
                     ),
                 )
                 veri = guvenli_json_yukle(getattr(response, "text", ""))
+                model_basari_isle(model_durumlari, kategori, model_adi)
+                model_durumlarini_temizle(model_durumlari)
+                model_durumlarini_kaydet(model_durumlari)
                 log_ekle(f"✅ İçerik üretildi → kullanılan model: {model_adi}")
                 return veri, model_adi
             except Exception as e:
                 son_hata = e
                 hata_metni = str(e)
-                if gecici_hata_mi(hata_metni) and deneme == 0:
+                model_hata_ekle(model_durumlari, kategori, model_adi, hata_metni)
+                model_durumlarini_temizle(model_durumlari)
+                model_durumlarini_kaydet(model_durumlari)
+                if gecici_hata_mi(hata_metni) and deneme < deneme_sayisi - 1:
                     log_ekle(f"⏳ {model_adi} geçici hata verdi. 3 sn sonra tekrar denenecek...")
                     time.sleep(3)
                     continue
@@ -102,9 +218,18 @@ def metin_uret(client, model_listesi, video_icerigi, system_prompt, response_sch
     raise son_hata if son_hata else Exception("Hiçbir model içerik üretemedi.")
 
 
-def ses_uret(client, model_listesi, metin, ses_adi, cikti_dosyasi, log_ekle):
+def ses_uret(client, model_listesi, metin, ses_adi, cikti_dosyasi, log_ekle, kategori="ses"):
     son_hata = None
-    for model_adi in model_listesi:
+    model_durumlari = model_durumlarini_yukle()
+    model_durumlarini_temizle(model_durumlari)
+    model_durumlarini_kaydet(model_durumlari)
+
+    aday_modeller = modelleri_sirala_ve_filtrele(model_listesi, kategori, model_durumlari)
+    if not aday_modeller:
+        log_ekle("❌ Ses için 24 saat karantinada olmayan model yok.")
+        return False, None
+
+    for model_adi in aday_modeller:
         log_ekle(f"🎙️ Seslendirme deneniyor: {model_adi} (ses: {ses_adi})")
         for deneme in range(2):
             try:
@@ -143,11 +268,17 @@ def ses_uret(client, model_listesi, metin, ses_adi, cikti_dosyasi, log_ekle):
                     wf.setframerate(24000)
                     wf.writeframes(audio_data)
 
+                model_basari_isle(model_durumlari, kategori, model_adi)
+                model_durumlarini_temizle(model_durumlari)
+                model_durumlarini_kaydet(model_durumlari)
                 log_ekle(f"✅ Ses üretildi → kullanılan model: {model_adi}")
                 return True, model_adi
             except Exception as e:
                 son_hata = e
                 hata_metni = str(e)
+                model_hata_ekle(model_durumlari, kategori, model_adi, hata_metni)
+                model_durumlarini_temizle(model_durumlari)
+                model_durumlarini_kaydet(model_durumlari)
                 if gecici_hata_mi(hata_metni) and deneme == 0:
                     log_ekle(f"⏳ {model_adi} geçici hata verdi. 4 sn sonra tekrar denenecek...")
                     time.sleep(4)
@@ -158,9 +289,13 @@ def ses_uret(client, model_listesi, metin, ses_adi, cikti_dosyasi, log_ekle):
     return False, None
 
 
-def video_analiz_et(client, model_listesi, video_bytes, mime_type, kullanici_notlari, log_ekle):
+def video_analiz_et(client, model_listesi, video_bytes, mime_type, kullanici_notlari, log_ekle, kategori="video_analiz"):
     son_hata = None
     video_part = types.Part.from_bytes(data=video_bytes, mime_type=mime_type)
+
+    model_durumlari = model_durumlarini_yukle()
+    model_durumlarini_temizle(model_durumlari)
+    model_durumlarini_kaydet(model_durumlari)
 
     ek_notlar_bolumu = ""
     if kullanici_notlari.strip():
@@ -185,7 +320,11 @@ Bana şu başlıklarda çok net, maddeler halinde rapor ver:
 
 Bu bilgileri, bir sonraki adımda benim 'kurallar.txt' dosyamdaki formata göre seslendirme metni üretmen için bana ham veri olarak ver. Doğrudan analiz sonucunu yaz, ekstra konuşma yapma."""
 
-    for model_adi in model_listesi:
+    aday_modeller = modelleri_sirala_ve_filtrele(model_listesi, kategori, model_durumlari)
+    if not aday_modeller:
+        raise Exception("Video analiz için 24 saat karantinada olmayan model yok. Süre dolunca tekrar dene.")
+
+    for model_adi in aday_modeller:
         log_ekle(f"🔍 Video analizi deneniyor: {model_adi}")
         for deneme in range(2):
             try:
@@ -193,11 +332,17 @@ Bu bilgileri, bir sonraki adımda benim 'kurallar.txt' dosyamdaki formata göre 
                     model=model_adi,
                     contents=[video_part, analiz_promptu],
                 )
+                model_basari_isle(model_durumlari, kategori, model_adi)
+                model_durumlarini_temizle(model_durumlari)
+                model_durumlarini_kaydet(model_durumlari)
                 log_ekle(f"✅ Video analiz edildi → kullanılan model: {model_adi}")
                 return getattr(response, "text", ""), model_adi
             except Exception as e:
                 son_hata = e
                 hata_metni = str(e)
+                model_hata_ekle(model_durumlari, kategori, model_adi, hata_metni)
+                model_durumlarini_temizle(model_durumlari)
+                model_durumlarini_kaydet(model_durumlari)
                 if gecici_hata_mi(hata_metni) and deneme == 0:
                     log_ekle(f"⏳ {model_adi} geçici hata verdi. 3 sn sonra tekrar denenecek...")
                     time.sleep(3)
@@ -293,7 +438,12 @@ if buton_tiklandi:
     try:
         client = genai.Client(api_key=gemini_key)
 
-        if uploaded_video is not None and uploaded_video.size <= 20 * 1024 * 1024:
+        if uploaded_video is not None and uploaded_video.size > 20 * 1024 * 1024:
+            log_ekle("❌ Video boyutu limit üzerinde olduğu için analiz başlatılamadı.")
+            st.error("Video 20 MB limitini aşıyor. Lütfen videoyu sıkıştırıp tekrar deneyin.")
+            st.stop()
+
+        if uploaded_video is not None:
             log_ekle("🎥 Yüklenen video Gemini tarafından izlenip analiz ediliyor...")
             video_bytes = uploaded_video.getvalue()
             mime_type = uploaded_video.type or "video/mp4"
@@ -359,7 +509,7 @@ alt_metin alanı İSTENMİYOR, üretme.
         }
 
         veri, kullanilan_metin_modeli = metin_uret(
-            client, METIN_MODELLERI, video_icerigi, system_prompt, response_schema, log_ekle
+            client, METIN_MODELLERI, video_icerigi, system_prompt, response_schema, log_ekle, kategori="metin"
         )
 
         log_ekle("🧵 Threads/X için ayrı açıklama üretiliyor...")
@@ -389,7 +539,14 @@ Kurallar:
 
         try:
             threads_veri, kullanilan_threads_modeli = metin_uret(
-                client, METIN_MODELLERI, threads_icerigi, threads_system_prompt, threads_schema, log_ekle
+                client,
+                THREADS_MODELLERI,
+                threads_icerigi,
+                threads_system_prompt,
+                threads_schema,
+                log_ekle,
+                deneme_sayisi=1,
+                kategori="threads",
             )
             veri["threads_aciklamasi"] = str(threads_veri.get("threads_aciklamasi", "")).strip()
         except Exception as threads_hata:
