@@ -1,4 +1,2 @@
 streamlit
 google-genai
-edge-tts
-requests
