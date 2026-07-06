@@ -36,7 +36,7 @@ VIDEO_ANALIZ_MODELLERI = [
 def markdown_temizle(metin: str) -> str:
     if not isinstance(metin, str):
         return ""
-    return re.sub(r"[*_#`]+", "", metin).strip()
+    return re.sub(r"[*_`]+", "", metin).strip()
 
 
 def kapak_basliklarini_formatla(liste) -> str:
@@ -335,7 +335,7 @@ Sen seslendirme metnini, kurallar.txt'teki kelime sayısı formülünü kullanar
 Yukarıdaki otoXtra kurallarına GÖRE üretim yap. NİHAİ ÇIKTIYI sadece aşağıdaki JSON alanlarına göre ver:
 
 - seslendirme_metni: {sure_saniye} saniyeye tam uyan, 4 vuruş yapısına uygun, TTS motoruna gidecek düz metin. Markdown KULLANMA.
-- reels_aciklamasi: Katmanlı Instagram açıklaması + en sonda 5 hashtag. Markdown KULLANMA.
+- reels_aciklamasi: Katmanlı Instagram açıklaması + en sonda 5 hashtag. Emoji zorunlu değil; sadece konuya uygunsa ve okunurluğu artırıyorsa az ve doğal kullan. Markdown KULLANMA.
 - kapak_basliklari: 5 farklı kapak başlığı. "ana" (TAMAMI BÜYÜK HARF) ve "alt" alanları. Markdown KULLANMA.
 
 alt_metin alanı İSTENMİYOR, üretme.
@@ -362,6 +362,42 @@ alt_metin alanı İSTENMİYOR, üretme.
             client, METIN_MODELLERI, video_icerigi, system_prompt, response_schema, log_ekle
         )
 
+        log_ekle("🧵 Threads/X için ayrı açıklama üretiliyor...")
+        threads_icerigi = f"""INSTAGRAM AÇIKLAMASI:
+{veri.get('reels_aciklamasi', '')}
+
+GÖREV:
+Bu Instagram açıklamasını Threads ve X benzeri platformlar için daha sohbet eden, daha direkt ve akıcı bir metne dönüştür.
+"""
+        threads_system_prompt = """
+Sadece JSON üret.
+
+Kurallar:
+- Çıktı 500 karakteri geçmesin.
+- Hashtag kullanma.
+- Konu ve ana mesaj korunsun, dil daha sohbet odaklı olsun.
+- Emoji zorunlu değil; sadece uygunsa doğal ve az kullan.
+- Tek parça, okunabilir bir metin ver.
+"""
+        threads_schema = {
+            "type": "OBJECT",
+            "properties": {
+                "threads_aciklamasi": {"type": "STRING"},
+            },
+            "required": ["threads_aciklamasi"],
+        }
+
+        try:
+            threads_veri, kullanilan_threads_modeli = metin_uret(
+                client, METIN_MODELLERI, threads_icerigi, threads_system_prompt, threads_schema, log_ekle
+            )
+            veri["threads_aciklamasi"] = str(threads_veri.get("threads_aciklamasi", "")).strip()
+        except Exception as threads_hata:
+            log_ekle(f"⚠️ Threads metni ayrı üretilemedi ({str(threads_hata)[:100]}...). Kısa fallback hazırlanıyor.")
+            fallback_threads = re.sub(r"(?m)^#.*$", "", veri.get("reels_aciklamasi", "")).strip()
+            veri["threads_aciklamasi"] = fallback_threads[:500].rstrip()
+            kullanilan_threads_modeli = "fallback"
+
         secilen_ses_ingilizce = ses_secimi.split(" ")[0]
         ses_dosyasi = "seslendirme.wav"
         ses_basarili, kullanilan_ses_modeli = ses_uret(
@@ -377,6 +413,7 @@ alt_metin alanı İSTENMİYOR, üretme.
             "secilen_ses_ingilizce": secilen_ses_ingilizce,
             "kullanilan_metin_modeli": kullanilan_metin_modeli,
             "kullanilan_ses_modeli": kullanilan_ses_modeli,
+            "kullanilan_threads_modeli": kullanilan_threads_modeli,
         }
 
     except Exception:
@@ -394,6 +431,7 @@ if st.session_state.sonuc:
     secilen_ses_ingilizce = sonuc["secilen_ses_ingilizce"]
     kullanilan_metin_modeli = sonuc.get("kullanilan_metin_modeli", "?")
     kullanilan_ses_modeli = sonuc.get("kullanilan_ses_modeli", "?")
+    kullanilan_threads_modeli = sonuc.get("kullanilan_threads_modeli", "?")
 
     st.success(f"✅ otoXtra İçeriği Başarıyla Üretti! (Metin: {kullanilan_metin_modeli})")
 
@@ -431,6 +469,10 @@ if st.session_state.sonuc:
         st.subheader("2️⃣ Kapak Başlığı Alternatifleri")
         st.caption("Kutunun sağ üst köşesindeki ikonla direkt kopyalayabilirsin.")
         st.code(kapak_basliklarini_formatla(veri.get("kapak_basliklari")), language=None)
+
+    st.subheader("3️⃣ Threads Açıklaması (500 Karakter, Etiketsiz)")
+    st.caption(f"Hashtag içermez. Kısa ve akıcı olacak şekilde hazırlanır. (Model: {kullanilan_threads_modeli})")
+    st.code(markdown_temizle(veri.get("threads_aciklamasi", "")), language=None)
 
     with st.expander("🎙️ Seslendirme Metni (kontrol için)"):
         st.code(markdown_temizle(veri.get("seslendirme_metni", "")), language=None)
