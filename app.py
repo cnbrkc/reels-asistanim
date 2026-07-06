@@ -7,6 +7,9 @@ import re
 import time
 import traceback
 import wave
+import tempfile
+import uuid
+import base64
 
 # ============================================================
 # otoXtra — Otomatik Reels Asistanı
@@ -33,6 +36,7 @@ VIDEO_ANALIZ_MODELLERI = [
 ]
 
 THREADS_MODELLERI = [
+    "gemini-2.5-pro",      # ← DÜZELTME: Fallback şansını artırmak için eklendi
     "gemini-2.5-flash",
     "gemini-1.5-flash",
 ]
@@ -40,6 +44,7 @@ THREADS_MODELLERI = [
 MODEL_DURUM_DOSYASI = "model_durumlari.json"
 MODEL_BEKLEME_SURESI_SN = 24 * 60 * 60
 HATA_SAKLAMA_SURESI_SN = 7 * 24 * 60 * 60
+MAX_INPUT_KARAKTER = 900_000  # ← DÜZELTME: Token limit aşımına karşı güvenli sınır
 
 
 def markdown_temizle(metin: str) -> str:
@@ -74,7 +79,6 @@ def model_durumlarini_kaydet(veri: dict):
         with open(MODEL_DURUM_DOSYASI, "w", encoding="utf-8") as f:
             json.dump(veri, f, ensure_ascii=False, indent=2)
     except Exception:
-        # Yazma izni yoksa uygulamayı durdurmamak için sessizce geçiyoruz.
         pass
 
 
@@ -262,6 +266,9 @@ def ses_uret(client, model_listesi, metin, ses_adi, cikti_dosyasi, log_ekle, kat
                 if not audio_data:
                     raise ValueError("TTS audio verisi boş döndü.")
 
+                if isinstance(audio_data, str):  # ← DÜZELTME: Base64 encoded gelirse decode et
+                    audio_data = base64.b64decode(audio_data)
+
                 with wave.open(cikti_dosyasi, "wb") as wf:
                     wf.setnchannels(1)
                     wf.setsampwidth(2)
@@ -315,7 +322,7 @@ Bana şu başlıklarda çok net, maddeler halinde rapor ver:
 1. VİRAL DETAYLAR & TÜRK İZLEYİCİSİ KANCASI: Videoda Türk izleyicisinin gözünü durduracak, merak uyandıracak veya tartışma yaratacak spesifik detaylar neler?
 2. KURGU & HIZLANDIRMA STRATEJİSİ: Videonun en vurucu 3-4 görsel anını belirt ve seslendirme temposu notu düş.
 3. HOOK (GİRİŞ KANCASI) ÖNERİSİ: İlk 3 saniyede kaydırmayı durduracak spesifik cümleyi öner.
-4. KAPANIŞ (CTA/LOOP) ÖNERİSİ: Son 3 saniyede yorum tetikleyecek veya tekrar izletecek kritik cümleyi öner.
+4. KAPIŞIŞ (CTA/LOOP) ÖNERİSİ: Son 3 saniyede yorum tetikleyecek veya tekrar izletecek kritik cümleyi öner.
 {ek_notlar_bolumu}
 
 Bu bilgileri, bir sonraki adımda benim 'kurallar.txt' dosyamdaki formata göre seslendirme metni üretmen için bana ham veri olarak ver. Doğrudan analiz sonucunu yaz, ekstra konuşma yapma."""
@@ -398,10 +405,13 @@ uploaded_video = st.file_uploader(
     help="Videoyu yüklersen, AI videoyu izleyip Türk izleyicisi için viral strateji kurar."
 )
 
+# ← DÜZELTME: Video boyutu kontrolü tek noktada, buton disable ediliyor
+video_buyuk = uploaded_video is not None and uploaded_video.size > 20 * 1024 * 1024
+
 if uploaded_video is not None:
     st.video(uploaded_video)
-    if uploaded_video.size > 20 * 1024 * 1024:
-        st.error("⚠️ Video 20 MB'tan büyük! Ücretsiz API limiti için lütfen videoyu sıkıştır (720p).")
+    if video_buyuk:
+        st.warning("⚠️ Video 20 MB'tan büyük! Ücretsiz API limiti için lütfen videoyu sıkıştır (720p).")
 
 konu_ve_istekler = st.text_area(
     "🎬 Videonun konusu ve özel istekler",
@@ -413,7 +423,7 @@ sc1, sc2 = st.columns([1, 3])
 with sc1:
     sure_saniye = st.number_input("⏱️ Hedef Süre (saniye)", min_value=5, max_value=180, value=30, step=5)
 
-buton_tiklandi = st.button("🚀 otoXtra İçeriğini Üret!")
+buton_tiklandi = st.button("🚀 otoXtra İçeriğini Üret!", disabled=video_buyuk)  # ← DÜZELTME
 log_kutusu = st.empty()
 
 
@@ -463,6 +473,11 @@ if buton_tiklandi:
                 st.warning("Lütfen videonun konusunu yazın veya bir referans video yükleyin.")
                 st.stop()
             video_icerigi = f"VİDEO KONUSU VE ÖZEL İSTEKLER:\n{konu_ve_istekler.strip()}"
+
+        # ← DÜZELTME: Token limit aşımına karşı içerik kısaltma
+        if len(video_icerigi) > MAX_INPUT_KARAKTER:
+            video_icerigi = video_icerigi[:MAX_INPUT_KARAKTER]
+            log_ekle("⚠️ İçerik çok uzun, güvenli sınıra kısaltıldı.")
 
         try:
             with open("kurallar.txt", "r", encoding="utf-8") as f:
@@ -556,7 +571,10 @@ Kurallar:
             kullanilan_threads_modeli = "fallback"
 
         secilen_ses_ingilizce = ses_secimi.split(" ")[0]
-        ses_dosyasi = "seslendirme.wav"
+
+        # ← DÜZELTME: Her session için benzersiz ses dosyası (eşzamanlı kullanıcı çakışmasını önler)
+        ses_dosyasi = os.path.join(tempfile.gettempdir(), f"ses_{uuid.uuid4().hex[:8]}.wav")
+
         ses_basarili, kullanilan_ses_modeli = ses_uret(
             client, SES_MODELLERI, veri["seslendirme_metni"], secilen_ses_ingilizce, ses_dosyasi, log_ekle
         )
@@ -575,6 +593,7 @@ Kurallar:
 
     except Exception:
         hata_detay = traceback.format_exc()
+        hata_detay = hata_detay.replace(gemini_key, "***")  # ← DÜZELTME: API key maskeleme
         log_ekle("❌ HATA OLUŞTU — işlem tamamlanamadı. Aşağıdaki tüm kutuyu kopyalayıp destek için paylaşabilirsin:")
         log_ekle(hata_detay)
         st.error("Sistemde bir hata oluştu. Yukarıdaki süreç kutusunun tamamını kopyalayıp gönderirsen hemen bakarım.")
