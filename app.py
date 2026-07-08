@@ -109,15 +109,12 @@ def guvenli_json_yukle(response_text: str):
         return json.loads(temiz)
     except json.JSONDecodeError:
         # Önce standart markdown temizliğini dene (Satır bölünmesi engellendi)
-        temiz_md = re.sub(r"^
-```json\s*|^
-```|
-```$", "", temiz, flags=re.IGNORECASE | re.MULTILINE).strip()
+        temiz_md = re.sub(r"^```json\s*|^```\s*|```\s*$", "", temiz, flags=re.IGNORECASE | re.MULTILINE).strip()
         try:
             return json.loads(temiz_md)
         except json.JSONDecodeError:
             pass
-            
+
         # En sağlam yöntem: İçindeki ilk { ve son } bulup çıkarmak
         start = temiz.find('{')
         end = temiz.rfind('}')
@@ -126,7 +123,7 @@ def guvenli_json_yukle(response_text: str):
                 return json.loads(temiz[start:end+1])
             except json.JSONDecodeError:
                 pass
-                
+
         raise ValueError(f"JSON parse edilemedi. Ham yanıt: {temiz[:200]}...")
 
 
@@ -536,12 +533,12 @@ if buton_tiklandi:
             son_bosluk = kirpilmis.rfind(" ")
             son_nokta = kirpilmis.rfind(".")
             kesim_noktasi = max(son_bosluk, son_nokta)
-            
+
             if kesim_noktasi > int(MAX_INPUT_KARAKTER * 0.9):
                 video_icerigi = kirpilmis[:kesim_noktasi].strip()
             else:
                 video_icerigi = kirpilmis.strip()
-                
+
             log_ekle("⚠️ İçerik güvenli sınıra kısaltıldı (kelime bütünlüğü korundu).")
 
         # Kuralları oku
@@ -653,8 +650,8 @@ Kurallar:
     except Exception as e:
         # Streamlit'in kendi akış kontrol exception'larını (st.stop, st.rerun) yakalama, direkt yukarı fırlat
         if "StopExecution" in str(type(e)) or "RerunException" in str(type(e)):
-            raise 
-            
+            raise
+
         hata_detay = traceback.format_exc()
         # API key'leri maskele
         for api_key in API_KEYS.values():
@@ -725,4 +722,3 @@ if st.session_state.sonuc:
 
     with st.expander("🎙️ Seslendirme Metni (kontrol için)"):
         st.code(markdown_temizle(veri.get("seslendirme_metni", "")), language=None)
-
