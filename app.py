@@ -512,7 +512,7 @@ if uploaded_video is not None:
 st.markdown("### 📝 Analiz Notları")
 video_analiz_notlari = st.text_area(
     "🔍 2. Video Analiz Notları",
-    height=120,
+    height=60,
     placeholder="Video yüklediyseniz: 'Motor sesine dikkat et', 'Fiyat detaylarını bul' gibi analiz odaklı notlar.\nVideo yüklemediyseniz: Kendi video analizinizi buraya yazın (örn: 'Bu videoda X aracının Y özelliği vurgulanıyor, Z detayı öne çıkıyor').",
     help="Video yüklediyseniz: Analiz YZ'sine talimat olarak gider. Video yüklemediyseniz: Bu metin analiz sonucu olarak kabul edilir."
 )
