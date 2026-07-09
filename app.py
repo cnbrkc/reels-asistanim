@@ -380,17 +380,17 @@ class SmartRouter:
         log_ekle("❌ Hiçbir ses modeli başarılı olamadı.")
         return False, None
 
-    def video_analiz_et(self, video_bytes, mime_type, kullanici_notlari, log_ekle):
+    def video_analiz_et(self, video_bytes, mime_type, analiz_notlari, log_ekle):
         """Video analizi (Türkiye odaklı viral strateji)."""
         son_hata = None
         video_part = types.Part.from_bytes(data=video_bytes, mime_type=mime_type)
 
         ek_notlar_bolumu = ""
-        if kullanici_notlari.strip():
+        if analiz_notlari.strip():
             ek_notlar_bolumu = f"""
- ÖNEMLİ: Kullanıcı videoyu analiz ettirirken sana şu EK İSTEKLERİ/ODAK NOKTALARINI iletti.
- --- KULLANICININ EK İSTEKLERİ ---
- {kullanici_notlari}
+ ÖNEMLİ: Kullanıcı videoyu analiz ettirirken sana şu VİDEO ANALİZ NOTLARINI iletti.
+ --- VİDEO ANALİZ NOTLARI ---
+ {analiz_notlari}
  -------------------------------
  """
 
@@ -490,12 +490,15 @@ with st.sidebar:
         st.caption("✅ Ban yok")
 
 # ------------------------------------------------------------
-# ANA ARAYÜZ
+# ANA ARAYÜZ - YENİ YAPI
 # ------------------------------------------------------------
+st.markdown("### 📥 Girdi Bilgileri")
+
+# 1. Video Yükleme (opsiyonel)
 uploaded_video = st.file_uploader(
-    "🎥 Viral Referans Videonu Yükle (Otomatik Analiz Edilsin)",
+    "🎥 1. Viral Referans Videonu Yükle (Opsiyonel - Otomatik Analiz Edilsin)",
     type=['mp4', 'mov', 'webm'],
-    help="Videoyu yüklersen, AI videoyu izleyip Türk izleyicisi için viral strateji kurar."
+    help="Videoyu yüklersen, AI videoyu izleyip Türk izleyicisi için viral strateji kurar. Yüklemazsen, kendi analizini aşağıya yazabilirsin."
 )
 
 video_buyuk = uploaded_video is not None and uploaded_video.size > 20 * 1024 * 1024
@@ -505,15 +508,27 @@ if uploaded_video is not None:
     if video_buyuk:
         st.warning("⚠️ Video 20 MB'tan büyük! Ücretsiz API limiti için lütfen videoyu sıkıştır (720p).")
 
-konu_ve_istekler = st.text_area(
-    "🎬 Videonun konusu ve özel istekler",
-    height=150,
-    placeholder="Paragraf 1: Videonun genel konusu\nParagraf 2: Özel istekler / odaklanılacak detaylar",
+# 2. Video Analiz Notları
+st.markdown("### 📝 Analiz Notları")
+video_analiz_notlari = st.text_area(
+    "🔍 2. Video Analiz Notları",
+    height=120,
+    placeholder="Video yüklediyseniz: 'Motor sesine dikkat et', 'Fiyat detaylarını bul' gibi analiz odaklı notlar.\nVideo yüklemediyseniz: Kendi video analizinizi buraya yazın (örn: 'Bu videoda X aracının Y özelliği vurgulanıyor, Z detayı öne çıkıyor').",
+    help="Video yüklediyseniz: Analiz YZ'sine talimat olarak gider. Video yüklemediyseniz: Bu metin analiz sonucu olarak kabul edilir."
 )
 
+# 3. Metin Üretim Notları
+metin_uretim_notlari = st.text_area(
+    "✍️ 3. Metin Üretim Notları",
+    height=120,
+    placeholder="Örnek:\n- Fiyat konusuna hiç değinme\n- Performans vurgusu yap\n- Sonunda 'sizce hangi renk?' diye sor",
+    help="Bu notlar sadece metin üretimi aşamasında kullanılır. Seslendirme ve caption'ları buna göre şekillendirir."
+)
+
+# 4. Hedef Süre
 sc1, sc2 = st.columns([1, 3])
 with sc1:
-    sure_saniye = st.number_input("⏱️ Hedef Süre (saniye)", min_value=5, max_value=180, value=30, step=5)
+    sure_saniye = st.number_input("⏱️ 4. Hedef Süre (saniye)", min_value=5, max_value=180, value=30, step=5)
 
 buton_tiklandi = st.button("🚀 otoXtra İçeriğini Üret!", disabled=video_buyuk)
 log_kutusu = st.empty()
@@ -538,31 +553,36 @@ if buton_tiklandi:
     log_ekle("🚀 Üretim başladı...")
 
     try:
+        # Girdi doğrulama
         if uploaded_video is not None and uploaded_video.size > 20 * 1024 * 1024:
             log_ekle("❌ Video boyutu limit üzerinde.")
             st.error("Video 20 MB limitini aşıyor.")
             st.stop()
 
+        # Video Analiz Aşaması
         if uploaded_video is not None:
             log_ekle("🎥 Video analiz ediliyor...")
             video_bytes = uploaded_video.getvalue()
             mime_type = uploaded_video.type or "video/mp4"
 
             analiz_metni, analiz_modeli = router.video_analiz_et(
-                video_bytes, mime_type, konu_ve_istekler, log_ekle
+                video_bytes, mime_type, video_analiz_notlari, log_ekle
             )
             log_ekle("🧠 Video analiz tamamlandı, içerik üretiliyor...")
-
-            video_icerigi = (
-                f"ANALİZ EDİLEN VİDEODAN ÇIKARILAN BİLGİLER:\n{analiz_metni}\n\n"
-                f"KULLANICININ NOTLARI:\n"
-                f"{konu_ve_istekler.strip() if konu_ve_istekler.strip() else 'Ek not yok.'}"
-            )
         else:
-            if not konu_ve_istekler.strip():
-                st.warning("Lütfen konuyu yazın veya video yükleyin.")
+            # Video yüklenmedi, kullanıcının yazdığı analiz notlarını kullan
+            if not video_analiz_notlari.strip():
+                st.warning("⚠️ Video yüklemediniz, lütfen 'Video Analiz Notları' kutusuna kendi analizinizi yazın.")
                 st.stop()
-            video_icerigi = f"VİDEO KONUSU:\n{konu_ve_istekler.strip()}"
+            analiz_metni = video_analiz_notlari.strip()
+            log_ekle("📝 Video yüklenmedi, manuel analiz notları kullanılıyor...")
+
+        # Üretim İçeriği Hazırlama
+        video_icerigi = (
+            f"VİDEO ANALİZ SONUCU:\n{analiz_metni}\n\n"
+            f"METİN ÜRETİM NOTLARI:\n"
+            f"{metin_uretim_notlari.strip() if metin_uretim_notlari.strip() else 'Ek üretim notu yok.'}"
+        )
 
         # Token limit koruması (Kelime/Satır bütünlüğünü koruyarak kesme)
         if len(video_icerigi) > MAX_INPUT_KARAKTER:
