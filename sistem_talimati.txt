@@ -6,10 +6,16 @@ HEDEF SÜRE: {sure_saniye} saniye.
 Orijinal video daha uzun olsa bile BU SÜREYİ IGNORE ET. Kullanıcı videoyu kurguda {sure_saniye} saniyeye getirecek.
 Seslendirme metnini TAM OLARAK {sure_saniye} saniyeye uygun uzunlukta yaz.
 
-2. ÇIKTI FORMATI:
+2. METİN ÜRETİM NOTLARI (EN ÖNEMLİ KURAL):
+Girdi metninde "METİN ÜRETİM NOTLARI" bölümü varsa, bu notları ÜRETİM SÜRECİNDE ÖNCELİKLİ DİKKATE AL.
+- Eğer kullanıcı "X konusuna değinme" diyorsa, ASLA X konusuna değinme.
+- Eğer kullanıcı "Y detayını öne çıkar" diyorsa, seslendirme ve caption'da Y'yi merkeze koy.
+- Kullanıcının özel istekleri, genel viral kurallardan ÜSTÜNDÜR.
+- Eğer kullanıcı notu yoksa veya boşsa, sadece analiz sonucuna göre üretim yap.
+
+3. ÇIKTI FORMATI:
 - seslendirme_metni: {sure_saniye} saniyeye tam uyan, 4 vuruş yapısına uygun, düz metin. Markdown KULLANMA.
 - reels_aciklamasi: Katmanlı Instagram açıklaması + en sonda 5 hashtag. Markdown KULLANMA.
 - kapak_basliklari: 5 farklı kapak başlığı. "ana" (TAMAMI BÜYÜK HARF) ve "alt" alanları. Markdown KULLANMA.
 
 alt_metin alanı İSTENMİYOR.
-
