@@ -15,13 +15,46 @@ from datetime import datetime
 # ============================================================
 # otoXtra — Otomatik Reels + Threads Asistanı
 # FİNAL VERSİYON: Tüm özellikler bir arada
-#   - 3 API key akıllı yönetimi (SmartRouter)
-#   - Video analizi (Türkiye odaklı viral strateji)
-#   - Reels caption (katmanlı, hashtag'li)
-#   - Threads caption (sohbet havasında, kısa)
-#   - 5 kapak başlığı alternatifi
-#   - Token limit, base64 decode, tempfile korumaları
+# - 3 API key akıllı yönetimi (SmartRouter)
+# - Video analizi (Türkiye odaklı viral strateji)
+# - Reels caption (katmanlı, hashtag'li)
+# - Threads caption (sohbet havasında, kısa)
+# - 5 kapak başlığı alternatifi
+# - Token limit, base64 decode, tempfile korumaları
 # ============================================================
+
+# ------------------------------------------------------------
+# PROMPT DOSYALARINI YÜKLEME YARDIMCILARI
+# ------------------------------------------------------------
+def prompt_dosyasini_oku(dosya_adi: str) -> str:
+    """Dışarıdan prompt dosyasını okur, bulunamazsa hata fırlatır."""
+    try:
+        with open(dosya_adi, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        st.error(f"⚠️ Prompt dosyası bulunamadı: '{dosya_adi}'!")
+        st.stop()
+
+def guncellik_talimati_uret() -> str:
+    """guncellik_talimati.txt dosyasını okuyup güncel tarihi ekler."""
+    sablon = prompt_dosyasini_oku("guncellik_talimati.txt")
+    return sablon.format(bugunun_tarihi=guncel_tarih_metni())
+
+def video_analiz_promptunu_olustur(ek_notlar_bolumu: str) -> str:
+    """video_analiz_promptu.txt dosyasını okuyup değişkenleri ekler."""
+    sablon = prompt_dosyasini_oku("video_analiz_promptu.txt")
+    return sablon.format(
+        ek_notlar_bolumu=ek_notlar_bolumu,
+        guncellik_talimati=guncellik_talimati_uret()
+    )
+
+def sistem_talimati_olustur(sure_saniye: int) -> str:
+    """sistem_talimati.txt dosyasını okuyup sure_saniye ve güncellik talimatını ekler."""
+    sablon = prompt_dosyasini_oku("sistem_talimati.txt")
+    return sablon.format(
+        sure_saniye=sure_saniye,
+        guncellik_talimati=guncellik_talimati_uret()
+    )
 
 # ------------------------------------------------------------
 # API KEY YAPILANDIRMASI (Streamlit Secrets'tan)
@@ -37,11 +70,11 @@ except Exception as e:
 # ------------------------------------------------------------
 # COOLDOWN SÜRELERİ (saniye)
 # ------------------------------------------------------------
-COOLDOWN_KOTA = 24 * 60 * 60       # 24 saat (429 - o key o modeli kullanamaz)
-COOLDOWN_SUNUCU = 15 * 60           # 15 dk (503 - o model herkes için çöktü)
-COOLDOWN_BULUNAMADI = 24 * 60 * 60  # 24 saat (404 - o model yok)
-COOLDOWN_DIGER = 5 * 60             # 5 dk (belirsiz hata)
-IP_BAN_KORUMA = 1.0                 # 1 sn (istekler arası bekleme)
+COOLDOWN_KOTA = 24 * 60 * 60      # 24 saat (429 - o key o modeli kullanamaz)
+COOLDOWN_SUNUCU = 15 * 60          # 15 dk (503 - o model herkes için çöktü)
+COOLDOWN_BULUNAMADI = 24 * 60 * 60 # 24 saat (404 - o model yok)
+COOLDOWN_DIGER = 5 * 60            # 5 dk (belirsiz hata)
+IP_BAN_KORUMA = 1.0                # 1 sn (istekler arası bekleme)
 
 # ------------------------------------------------------------
 # MODEL LİSTELERİ (Temmuz 2026 - Güncel)
@@ -77,10 +110,6 @@ MAX_INPUT_KARAKTER = 900_000  # Token limit aşımına karşı güvenli sınır
 # ------------------------------------------------------------
 # GÜNCELLİK / GOOGLE ARAMA DESTEĞİ
 # ------------------------------------------------------------
-# Google Search grounding + yapılandırılmış JSON çıktısı (response_schema)
-# şu anda sadece Gemini 3 serisi modellerde birlikte destekleniyor.
-# Bu yüzden arama aracı SADECE model adı "gemini-3" ile başlıyorsa eklenir;
-# eski (2.5) modellerde hataya yol açmaması için otomatik atlanır.
 GEMINI3_ARAMA_DESTEKLI_ONEK = "gemini-3"
 
 TURKCE_AYLAR = {
@@ -88,32 +117,15 @@ TURKCE_AYLAR = {
     7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık",
 }
 
-
 def guncel_tarih_metni() -> str:
     """İstek anındaki tarihi Türkçe, okunaklı biçimde döndürür (örn: '9 Temmuz 2026')."""
     simdi = datetime.now()
     return f"{simdi.day} {TURKCE_AYLAR[simdi.month]} {simdi.year}"
 
-
 def model_arama_destekliyor_mu(model_adi: str) -> bool:
     """Google Search grounding aracının, response_schema ile birlikte bu modelde
     güvenle kullanılıp kullanılamayacağını döndürür (şu an sadece Gemini 3 serisi)."""
     return model_adi.startswith(GEMINI3_ARAMA_DESTEKLI_ONEK)
-
-
-def guncellik_talimati_uret() -> str:
-    """Sistem promptlarına eklenecek, modeli güncel bilgi aramaya zorlayan talimat metni."""
-    return f"""
-ÖNEMLİ — GÜNCELLİK VE DOĞRULUK KURALI:
-Bugünün tarihi: {guncel_tarih_metni()}.
-Eğitim verin bu tarihten eski olabilir; fiyat, model yılı, teknik özellik, kampanya,
-vergi/ÖTV oranı gibi ZAMANLA DEĞİŞEN her bilgiyi ASLA ezberinden/tahminen yazma.
-Böyle bir bilgi vereceğin her seferinde önce google_search aracını kullanarak
-{guncel_tarih_metni()} tarihi itibarıyla GÜNCEL veriyi doğrula, sonra o güncel veriyi kullan.
-Güncel veriyi bulamazsan, eski/kesin olmayan bir rakam uydurmak yerine bunu genel ifadeyle geç
-(örn. "güncel fiyatı için bayiye danışılmalı" gibi) ama bunu istisna say, önce mutlaka aramayı dene.
-"""
-
 
 # ------------------------------------------------------------
 # YARDIMCI FONKSİYONLAR
@@ -121,8 +133,7 @@ Güncel veriyi bulamazsan, eski/kesin olmayan bir rakam uydurmak yerine bunu gen
 def markdown_temizle(metin: str) -> str:
     if not isinstance(metin, str):
         return ""
-    return re.sub(r"[*_`]+", "", metin).strip()
-
+    return re.sub(r"[\*\_\`\[\]]+", "", metin).strip()
 
 def kapak_basliklarini_formatla(liste) -> str:
     if not isinstance(liste, list) or not liste:
@@ -135,11 +146,10 @@ def kapak_basliklarini_formatla(liste) -> str:
         else:
             ana, alt = markdown_temizle(str(secenek)), ""
         if alt:
-            satirlar.append(f"{i}) {ana}\n    {alt}")
+            satirlar.append(f"{i}) {ana}\n {alt}")
         else:
             satirlar.append(f"{i}) {ana}")
     return "\n\n".join(satirlar)
-
 
 def guvenli_json_yukle(response_text: str):
     """Gemini bazen markdown bloğu içinde JSON döndürür, bu onu temizler."""
@@ -150,24 +160,23 @@ def guvenli_json_yukle(response_text: str):
     try:
         return json.loads(temiz)
     except json.JSONDecodeError:
-        # Önce standart markdown temizliğini dene (Satır bölünmesi engellendi)
-        temiz_md = re.sub(r"^```json\s*|^```\s*|```\s*$", "", temiz, flags=re.IGNORECASE | re.MULTILINE).strip()
+        # Önce standart markdown temizliğini dene
+        temiz_md = re.sub(r"^\`\`\`json\s*|^\`\`\`\s*|\`\`\`\s*$", "", temiz, flags=re.IGNORECASE | re.MULTILINE).strip()
         try:
             return json.loads(temiz_md)
         except json.JSONDecodeError:
             pass
 
-        # En sağlam yöntem: İçindeki ilk { ve son } bulup çıkarmak
-        start = temiz.find('{')
-        end = temiz.rfind('}')
-        if start != -1 and end != -1 and end > start:
-            try:
-                return json.loads(temiz[start:end+1])
-            except json.JSONDecodeError:
-                pass
+    # En sağlam yöntem: İçindeki ilk { ve son } bulup çıkarmak
+    start = temiz.find('{')
+    end = temiz.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(temiz[start:end+1])
+        except json.JSONDecodeError:
+            pass
 
-        raise ValueError(f"JSON parse edilemedi. Ham yanıt: {temiz[:200]}...")
-
+    raise ValueError(f"JSON parse edilemedi. Ham yanıt: {temiz[:200]}...")
 
 # ------------------------------------------------------------
 # AKILLI ROUTER
@@ -175,10 +184,10 @@ def guvenli_json_yukle(response_text: str):
 class SmartRouter:
     """
     3 katmanlı banlama mantığı:
-      - 429 (kota)      → KEY+MODEL banlanır (24 saat)
-      - 503 (sunucu)     → MODEL banlanır (15 dk, herkes için)
-      - 404 (bulunamadı) → MODEL banlanır (24 saat, herkes için)
-      - diğer            → KEY+MODEL banlanır (5 dk)
+    - 429 (kota) → KEY+MODEL banlanır (24 saat)
+    - 503 (sunucu) → MODEL banlanır (15 dk, herkes için)
+    - 404 (bulunamadı) → MODEL banlanır (24 saat, herkes için)
+    - diğer → KEY+MODEL banlanır (5 dk)
     """
 
     def __init__(self):
@@ -238,20 +247,18 @@ class SmartRouter:
         ban_sure = f"{cooldown // 60} dk" if cooldown < 3600 else f"{cooldown // 3600} saat"
 
         if scope == "model":
-            log_ekle(f"   ❌ {model} MODEL bazlı hata → TÜM key'ler için {ban_sure} banlandı")
+            log_ekle(f" ❌ {model} MODEL bazlı hata → TÜM key'ler için {ban_sure} banlandı")
             self._ban(mail, model, cooldown, "model")
             time.sleep(IP_BAN_KORUMA)
             return "break_model"
         else:
-            log_ekle(f"   ⚠️ {mail} hatası → {model} ile {ban_sure} banlandı, diğer key deneniyor")
+            log_ekle(f" ⚠️ {mail} hatası → {model} ile {ban_sure} banlandı, diğer key deneniyor")
             self._ban(mail, model, cooldown, scope)
             time.sleep(IP_BAN_KORUMA)
             return "devam"
 
     def metin_uret(self, video_icerigi, system_prompt, response_schema, log_ekle, model_listesi=None, arama_kullan=True):
-        """Metin üretimi. model_listesi verilmezse METIN_MODELLERI kullanılır.
-        arama_kullan=True ise, destekleyen (Gemini 3 serisi) modellerde Google Search
-        grounding aracı otomatik olarak eklenir; eski modellerde otomatik atlanır."""
+        """Metin üretimi. model_listesi verilmezse METIN_MODELLERI kullanılır."""
         if model_listesi is None:
             model_listesi = METIN_MODELLERI
 
@@ -262,18 +269,15 @@ class SmartRouter:
 
             for mail, api_key in API_KEYS.items():
                 if self._is_banned(mail, model_adi):
-                    log_ekle(f"   ⏸️ {mail} + {model_adi} banlı, atlanıyor")
+                    log_ekle(f" ⏸️ {mail} + {model_adi} banlı, atlanıyor")
                     continue
 
                 model_denendi = True
-                log_ekle(f"   🚀 {mail} ile {model_adi} deneniyor...")
+                log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
 
                 try:
                     client = genai.Client(api_key=api_key)
 
-                    # Google Search grounding + response_schema kombinasyonu şu an
-                    # sadece Gemini 3 serisinde destekleniyor; diğer modellerde
-                    # hataya yol açmaması için sadece uygun modellerde eklenir.
                     arama_bu_modelde_aktif = arama_kullan and model_arama_destekliyor_mu(model_adi)
                     config_parametreleri = dict(
                         system_instruction=system_prompt,
@@ -282,7 +286,7 @@ class SmartRouter:
                     )
                     if arama_bu_modelde_aktif:
                         config_parametreleri["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-                        log_ekle(f"   🔎 {model_adi} için güncel bilgi araması aktif")
+                        log_ekle(f" 🔎 {model_adi} için güncel bilgi araması aktif")
 
                     response = client.models.generate_content(
                         model=model_adi,
@@ -290,7 +294,7 @@ class SmartRouter:
                         config=types.GenerateContentConfig(**config_parametreleri),
                     )
                     veri = guvenli_json_yukle(getattr(response, "text", ""))
-                    log_ekle(f"   ✅ Başarılı → {mail} + {model_adi}")
+                    log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
                     time.sleep(IP_BAN_KORUMA)
                     return veri, f"{mail}+{model_adi}"
 
@@ -301,7 +305,7 @@ class SmartRouter:
                         break
 
             if not model_denendi:
-                log_ekle(f"   ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
+                log_ekle(f" ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
 
         raise son_hata if son_hata else Exception("Tüm model+key kombinasyonları başarısız.")
 
@@ -314,11 +318,11 @@ class SmartRouter:
 
             for mail, api_key in API_KEYS.items():
                 if self._is_banned(mail, model_adi):
-                    log_ekle(f"   ⏸️ {mail} + {model_adi} banlı, atlanıyor")
+                    log_ekle(f" ⏸️ {mail} + {model_adi} banlı, atlanıyor")
                     continue
 
                 model_denendi = True
-                log_ekle(f"   🚀 {mail} ile {model_adi} deneniyor...")
+                log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
 
                 try:
                     client = genai.Client(api_key=api_key)
@@ -360,7 +364,7 @@ class SmartRouter:
                         wf.setframerate(24000)
                         wf.writeframes(audio_data)
 
-                    log_ekle(f"   ✅ Başarılı → {mail} + {model_adi}")
+                    log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
                     time.sleep(IP_BAN_KORUMA)
                     return True, f"{mail}+{model_adi}"
 
@@ -371,7 +375,7 @@ class SmartRouter:
                         break
 
             if not model_denendi:
-                log_ekle(f"   ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
+                log_ekle(f" ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
 
         log_ekle("❌ Hiçbir ses modeli başarılı olamadı.")
         return False, None
@@ -384,28 +388,13 @@ class SmartRouter:
         ek_notlar_bolumu = ""
         if kullanici_notlari.strip():
             ek_notlar_bolumu = f"""
-            ÖNEMLİ: Kullanıcı videoyu analiz ettirirken sana şu EK İSTEKLERİ/ODAK NOKTALARINI iletti.
-            --- KULLANICININ EK İSTEKLERİ ---
-            {kullanici_notlari}
-            -------------------------------
-            """
+ ÖNEMLİ: Kullanıcı videoyu analiz ettirirken sana şu EK İSTEKLERİ/ODAK NOKTALARINI iletti.
+ --- KULLANICININ EK İSTEKLERİ ---
+ {kullanici_notlari}
+ -------------------------------
+ """
 
-        analiz_promptu = f"""Sen Türkiye'de sosyal medya (Instagram Reels, TikTok, YouTube Shorts, Threads) algoritmalarını ve Türk izleyicisinin psikolojisini avucunun içi gibi bilen, 'viral DNA' çıkaran uzman bir strateistsin.
-Yüklediğim videoyu kare kare, sesiyle birlikte analiz et. Amacımız bu videodaki en çarpıcı detayları bulup Türkiye'de patlama yapacak bir kurgu stratejisi oluşturmak.
-
-Bana şu başlıklarda çok net, maddeler halinde rapor ver:
-
-1. VİRAL DETAYLAR & TÜRK İZLEYİCİSİ KANCASI: Türk izleyicisinin gözünü durduracak spesifik detaylar.
-2. KURGU & HIZLANDIRMA STRATEJİSİ: En vurucu 3-4 görsel an ve seslendirme temposu notu.
-3. HOOK (GİRİŞ KANCASI) ÖNERİSİ: İlk 3 saniyede kaydırmayı durduracak cümle.
-4. KANIŞTIRICI KAPANIŞ (CTA/LOOP) ÖNERİSİ: Son 3 saniyede yorum tetikleyecek cümle.
-{ek_notlar_bolumu}
-{guncellik_talimati_uret()}
-Videoda geçen araç/model/fiyat/özellik gibi bilgilerden bahsedeceksen, google_search
-aracıyla önce bunları güncel haliyle doğrula (örn. aracın güncel Türkiye fiyatı,
-güncel donanım paketi gibi), ezberden eski rakam verme.
-
-Bu bilgileri ham veri olarak ver. Ekstra konuşma yapma."""
+        analiz_promptu = video_analiz_promptunu_olustur(ek_notlar_bolumu)
 
         for model_adi in VIDEO_ANALIZ_MODELLERI:
             log_ekle(f"🔍 Model deneniyor: {model_adi}")
@@ -413,11 +402,11 @@ Bu bilgileri ham veri olarak ver. Ekstra konuşma yapma."""
 
             for mail, api_key in API_KEYS.items():
                 if self._is_banned(mail, model_adi):
-                    log_ekle(f"   ⏸️ {mail} + {model_adi} banlı, atlanıyor")
+                    log_ekle(f" ⏸️ {mail} + {model_adi} banlı, atlanıyor")
                     continue
 
                 model_denendi = True
-                log_ekle(f"   🚀 {mail} ile {model_adi} deneniyor...")
+                log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
 
                 try:
                     client = genai.Client(api_key=api_key)
@@ -428,7 +417,7 @@ Bu bilgileri ham veri olarak ver. Ekstra konuşma yapma."""
                             tools=[types.Tool(google_search=types.GoogleSearch())],
                         ),
                     )
-                    log_ekle(f"   ✅ Başarılı → {mail} + {model_adi}")
+                    log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
                     time.sleep(IP_BAN_KORUMA)
                     return getattr(response, "text", ""), f"{mail}+{model_adi}"
 
@@ -439,10 +428,9 @@ Bu bilgileri ham veri olarak ver. Ekstra konuşma yapma."""
                         break
 
             if not model_denendi:
-                log_ekle(f"   ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
+                log_ekle(f" ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
 
         raise son_hata if son_hata else Exception("Hiçbir model videoyu analiz edemedi.")
-
 
 # ------------------------------------------------------------
 # SAYFA AYARLARI
@@ -451,14 +439,6 @@ st.set_page_config(page_title="otoXtra Asistanım", page_icon="🏎️", layout=
 
 st.markdown(
     """
-    <style>
-    pre, code { white-space: pre-wrap !important; word-break: break-word !important; overflow-wrap: anywhere !important; }
-    @media (max-width: 640px) {
-        .block-container { padding-left: 0.9rem; padding-right: 0.9rem; padding-top: 1.2rem; }
-        h2, h3 { font-size: 1.05rem !important; }
-        .stButton button { width: 100%; }
-    }
-    </style>
     """,
     unsafe_allow_html=True,
 )
@@ -528,7 +508,7 @@ if uploaded_video is not None:
 konu_ve_istekler = st.text_area(
     "🎬 Videonun konusu ve özel istekler",
     height=150,
-    placeholder="Paragraf 1: Videonun genel konusu\n\nParagraf 2: Özel istekler / odaklanılacak detaylar",
+    placeholder="Paragraf 1: Videonun genel konusu\nParagraf 2: Özel istekler / odaklanılacak detaylar",
 )
 
 sc1, sc2 = st.columns([1, 3])
@@ -538,18 +518,15 @@ with sc1:
 buton_tiklandi = st.button("🚀 otoXtra İçeriğini Üret!", disabled=video_buyuk)
 log_kutusu = st.empty()
 
-
 def gunlugu_ciz():
     if st.session_state.log_satirlari:
         log_kutusu.code("\n".join(st.session_state.log_satirlari), language=None)
     else:
         log_kutusu.empty()
 
-
 def log_ekle(satir: str):
     st.session_state.log_satirlari.append(satir)
     gunlugu_ciz()
-
 
 gunlugu_ciz()
 
@@ -603,29 +580,10 @@ if buton_tiklandi:
             log_ekle("⚠️ İçerik güvenli sınıra kısaltıldı (kelime bütünlüğü korundu).")
 
         # Kuralları oku
-        try:
-            with open("kurallar.txt", "r", encoding="utf-8") as f:
-                BENIM_GEM_KURALLARIM = f.read()
-        except FileNotFoundError:
-            st.error("⚠️ 'kurallar.txt' bulunamadı!")
-            st.stop()
+        BENIM_GEM_KURALLARIM = prompt_dosyasini_oku("kurallar.txt")
 
-        system_prompt = BENIM_GEM_KURALLARIM + f"""
-{guncellik_talimati_uret()}
-ÖNEMLİ SİSTEM TALİMATI (otoXtra Uygulaması):
-
-1. SÜRE VE KURGU MANTIĞI:
-HEDEF SÜRE: {sure_saniye} saniye.
-Orijinal video daha uzun olsa bile BU SÜREYİ IGNORE ET. Kullanıcı videoyu kurguda {sure_saniye} saniyeye getirecek.
-Seslendirme metnini TAM OLARAK {sure_saniye} saniyeye uygun uzunlukta yaz.
-
-2. ÇIKTI FORMATI:
-- seslendirme_metni: {sure_saniye} saniyeye tam uyan, 4 vuruş yapısına uygun, düz metin. Markdown KULLANMA.
-- reels_aciklamasi: Katmanlı Instagram açıklaması + en sonda 5 hashtag. Markdown KULLANMA.
-- kapak_basliklari: 5 farklı kapak başlığı. "ana" (TAMAMI BÜYÜK HARF) ve "alt" alanları. Markdown KULLANMA.
-
-alt_metin alanı İSTENMİYOR.
-"""
+        # Sistem promptunu oluştur (kurallar + sistem talimatı)
+        system_prompt = BENIM_GEM_KURALLARIM + sistem_talimati_olustur(sure_saniye)
 
         response_schema = {
             "type": "OBJECT",
@@ -656,13 +614,7 @@ alt_metin alanı İSTENMİYOR.
 
 GÖREV: Bu Instagram açıklamasını Threads ve X için daha sohbet havasında, kısa ve akıcı bir metne dönüştür.
 """
-        threads_system_prompt = """Sadece JSON üret.
-Kurallar:
-- Çıktı 500 karakteri geçmesin.
-- Hashtag kullanma.
-- Konu ve ana mesaj korunsun, dil daha sohbet odaklı olsun.
-- Emoji zorunlu değil; uygunsa az ve doğal kullan.
-"""
+        threads_system_prompt = prompt_dosyasini_oku("threads_promptu.txt")
         threads_schema = {
             "type": "OBJECT",
             "properties": {
@@ -721,7 +673,6 @@ Kurallar:
         log_ekle("❌ HATA OLUŞTU:")
         log_ekle(hata_detay)
         st.error("Sistemde hata oluştu. Log kutusunu kopyalayıp gönder.")
-
 
 # ------------------------------------------------------------
 # SONUÇLARI GÖSTER
@@ -784,3 +735,4 @@ if st.session_state.sonuc:
 
     with st.expander("🎙️ Seslendirme Metni (kontrol için)"):
         st.code(markdown_temizle(veri.get("seslendirme_metni", "")), language=None)
+
