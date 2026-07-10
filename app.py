@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 from google import genai
 from google.genai import types
 import json
@@ -160,6 +161,32 @@ def guvenli_json_yukle(response_text: str):
             pass
 
     raise ValueError(f"JSON parse edilemedi. Ham yanıt: {temiz[:200]}...")
+
+# ------------------------------------------------------------
+# SEKMEYİ AKTİF TUT (Safari arka plan koruması)
+# ------------------------------------------------------------
+def sekmeyi_aktif_tut():
+    components.html("""
+    <script>
+    // Sessiz ses dosyası oluştur ve çal (tarayıcı uyanık kalsın)
+    try {
+        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        var oscillator = audioContext.createOscillator();
+        var gainNode = audioContext.createGain();
+        gainNode.gain.value = 0.001; // Neredeyse sessiz
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.start(0);
+        
+        // Sayfa kapanana kadar çal
+        window.addEventListener('beforeunload', function() {
+            oscillator.stop();
+        });
+    } catch(e) {
+        console.log("Audio context hatası:", e);
+    }
+    </script>
+    """, height=0)
 
 # ------------------------------------------------------------
 # AKILLI ROUTER
@@ -649,6 +676,7 @@ GÖREV: Bu Instagram açıklamasını Threads ve X için daha sohbet havasında,
 # SONUÇLAR
 # ------------------------------------------------------------
 if st.session_state.sonuc:
+    sekmeyi_aktif_tut()
     sonuc = st.session_state.sonuc
     veri = sonuc["veri"]
     ses_basarili = sonuc["ses_basarili"]
