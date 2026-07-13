@@ -66,28 +66,24 @@ COOLDOWN_BULUNAMADI = 24 * 60 * 60
 COOLDOWN_DIGER = 5 * 60
 COOLDOWN_FREE_TIER_YOK = 7 * 24 * 60 * 60
 IP_BAN_KORUMA = 1.0
-QUOTA_RETRY_DEFAULT = 5  # 10 yerine 5 saniye
+QUOTA_RETRY_DEFAULT = 60  # Key başına kota banı (diğer key deneniyor)
 
 # ------------------------------------------------------------
-# MODEL LİSTELERİ (Sadece Flash - Pro'lar kaldırıldı)
+# MODEL LİSTELERİ (Sadece gemini-2.5-flash)
 # ------------------------------------------------------------
 METIN_MODELLERI = [
-    "gemini-3.5-flash",
     "gemini-2.5-flash",
 ]
 
 SES_MODELLERI = [
-    "gemini-3.1-flash-tts",
     "gemini-2.5-flash-preview-tts",
 ]
 
 VIDEO_ANALIZ_MODELLERI = [
-    "gemini-3.5-flash",
     "gemini-2.5-flash",
 ]
 
 THREADS_MODELLERI = [
-    "gemini-3.5-flash",
     "gemini-2.5-flash",
 ]
 
@@ -268,15 +264,15 @@ class SmartRouter:
             time.sleep(IP_BAN_KORUMA)
             return "break_model"
         
+        # YENİ MANTIK: Kota hatası gelince bekleme, diğer key'e geç!
         if scope == "quota":
             delay = self._retry_delay_cikar(hata_metni)
-            if delay > 0:
-                log_ekle(f" ⏳ {mail} kota aştı, {delay}sn bekleniyor...")
-                time.sleep(delay)
-            else:
-                log_ekle(f" ⏳ {mail} kota aştı, {QUOTA_RETRY_DEFAULT}sn bekleniyor...")
-                time.sleep(QUOTA_RETRY_DEFAULT)
-            return "retry"
+            ban_sure = delay if delay > 0 else QUOTA_RETRY_DEFAULT
+            # Bu key'i ban_sure kadar banla, diğer key'e geç
+            self._ban(mail, model, ban_sure, "combo")
+            log_ekle(f" ⏳ {mail} kota aştı → {ban_sure}sn banlandı, diğer key deneniyor")
+            time.sleep(IP_BAN_KORUMA)
+            return "devam"  # Aynı modelde diğer key'e geç
         
         ban_sure = f"{cooldown // 60} dk" if cooldown < 3600 else f"{cooldown // 3600} saat"
 
@@ -306,51 +302,37 @@ class SmartRouter:
                     continue
 
                 model_denendi = True
-                
-                max_retries = 3
-                for attempt in range(max_retries):
-                    log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
+                log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
 
-                    try:
-                        client = genai.Client(api_key=api_key)
+                try:
+                    client = genai.Client(api_key=api_key)
 
-                        arama_bu_modelde_aktif = arama_kullan and model_arama_destekliyor_mu(model_adi)
-                        config_parametreleri = dict(
-                            system_instruction=system_prompt,
-                            response_mime_type="application/json",
-                            response_schema=response_schema,
-                        )
-                        if arama_bu_modelde_aktif:
-                            config_parametreleri["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-                            log_ekle(f" 🔎 {model_adi} için güncel bilgi araması aktif")
+                    arama_bu_modelde_aktif = arama_kullan and model_arama_destekliyor_mu(model_adi)
+                    config_parametreleri = dict(
+                        system_instruction=system_prompt,
+                        response_mime_type="application/json",
+                        response_schema=response_schema,
+                    )
+                    if arama_bu_modelde_aktif:
+                        config_parametreleri["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+                        log_ekle(f" 🔎 {model_adi} için güncel bilgi araması aktif")
 
-                        response = client.models.generate_content(
-                            model=model_adi,
-                            contents=video_icerigi,
-                            config=types.GenerateContentConfig(**config_parametreleri),
-                        )
-                        veri = guvenli_json_yukle(getattr(response, "text", ""))
-                        log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
-                        time.sleep(IP_BAN_KORUMA)
-                        return veri, f"{mail}+{model_adi}"
+                    response = client.models.generate_content(
+                        model=model_adi,
+                        contents=video_icerigi,
+                        config=types.GenerateContentConfig(**config_parametreleri),
+                    )
+                    veri = guvenli_json_yukle(getattr(response, "text", ""))
+                    log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
+                    time.sleep(IP_BAN_KORUMA)
+                    return veri, f"{mail}+{model_adi}"
 
-                    except Exception as e:
-                        son_hata = e
-                        aksiyon = self._handle_hata(mail, model_adi, str(e), log_ekle)
-                        
-                        if aksiyon == "retry":
-                            if attempt < max_retries - 1:
-                                continue
-                            else:
-                                log_ekle(f" ⚠️ {mail} + {model_adi} {max_retries} denemede de başarısız")
-                                break
-                        elif aksiyon == "break_model":
-                            break
-                        else:
-                            break
-                
-                if aksiyon == "break_model":
-                    break
+                except Exception as e:
+                    son_hata = e
+                    aksiyon = self._handle_hata(mail, model_adi, str(e), log_ekle)
+                    if aksiyon == "break_model":
+                        break
+                    # "devam" → diğer key'e geç (bekleme yok)
 
             if not model_denendi:
                 log_ekle(f" ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
