@@ -64,7 +64,9 @@ COOLDOWN_KOTA = 24 * 60 * 60
 COOLDOWN_SUNUCU = 15 * 60
 COOLDOWN_BULUNAMADI = 24 * 60 * 60
 COOLDOWN_DIGER = 5 * 60
+COOLDOWN_FREE_TIER_YOK = 7 * 24 * 60 * 60  # 7 gün
 IP_BAN_KORUMA = 1.0
+QUOTA_RETRY_DEFAULT = 10  # 429 hatasında varsayılan bekleme
 
 # ------------------------------------------------------------
 # MODEL LİSTELERİ
@@ -168,17 +170,14 @@ def guvenli_json_yukle(response_text: str):
 def sekmeyi_aktif_tut():
     components.html("""
     <script>
-    // Sessiz ses dosyası oluştur ve çal (tarayıcı uyanık kalsın)
     try {
         var audioContext = new (window.AudioContext || window.webkitAudioContext)();
         var oscillator = audioContext.createOscillator();
         var gainNode = audioContext.createGain();
-        gainNode.gain.value = 0.001; // Neredeyse sessiz
+        gainNode.gain.value = 0.001;
         oscillator.connect(gainNode);
         gainNode.connect(audioContext.destination);
         oscillator.start(0);
-        
-        // Sayfa kapanana kadar çal
         window.addEventListener('beforeunload', function() {
             oscillator.stop();
         });
@@ -231,10 +230,37 @@ class SmartRouter:
         else:
             st.session_state.blacklist[f"{mail}+{model}"] = time.time() + cooldown
 
+    def _retry_delay_cikar(self, hata_metni: str) -> int:
+        """429 hatalarında retryDelay değerini çıkar"""
+        match = re.search(r"retryDelay[\"':\s]+(\d+)", hata_metni)
+        if match:
+            try:
+                return int(match.group(1)) + 2
+            except ValueError:
+                pass
+        match2 = re.search(r"retry in (\d+(?:\.\d+)?)s", hata_metni, re.IGNORECASE)
+        if match2:
+            try:
+                return int(float(match2.group(1))) + 2
+            except ValueError:
+                pass
+        return 0
+
+    def _is_free_tier_yok(self, hata_metni: str) -> bool:
+        """limit: 0 hatası = model free tier'da YOK"""
+        return "limit: 0" in hata_metni or "limit\": 0" in hata_metni
+
     def _parse_hata(self, hata_metni: str):
         h = hata_metni.lower()
+        
+        # "limit: 0" = model free tier'da YOK (kalıcı ban)
+        if self._is_free_tier_yok(hata_metni):
+            return "free_tier_yok", COOLDOWN_FREE_TIER_YOK
+            
+        # 429 quota hatası = banlama, sadece bekle
         if "429" in hata_metni or "resource_exhausted" in h or "quota" in h:
-            return "combo", COOLDOWN_KOTA
+            return "quota", 0
+            
         if "503" in hata_metni or "unavailable" in h:
             return "model", COOLDOWN_SUNUCU
         if "404" in hata_metni or "not_found" in h:
@@ -243,6 +269,25 @@ class SmartRouter:
 
     def _handle_hata(self, mail, model, hata_metni, log_ekle):
         scope, cooldown = self._parse_hata(hata_metni)
+        
+        # FREE TIER YOK - Bu modeli uzun süre banla
+        if scope == "free_tier_yok":
+            log_ekle(f" 🚫 {model} free tier'da YOK (limit: 0) → 7 gün banlandı")
+            self._ban(mail, model, cooldown, "model")
+            time.sleep(IP_BAN_KORUMA)
+            return "break_model"
+        
+        # 429 QUOTA - BANLAMA, sadece bekle ve tekrar dene
+        if scope == "quota":
+            delay = self._retry_delay_cikar(hata_metni)
+            if delay > 0:
+                log_ekle(f" ⏳ {mail} kota aştı, {delay}sn bekleniyor...")
+                time.sleep(delay)
+            else:
+                log_ekle(f" ⏳ {mail} kota aştı, {QUOTA_RETRY_DEFAULT}sn bekleniyor...")
+                time.sleep(QUOTA_RETRY_DEFAULT)
+            return "retry"  # Aynı key ile tekrar dene
+        
         ban_sure = f"{cooldown // 60} dk" if cooldown < 3600 else f"{cooldown // 3600} saat"
 
         if scope == "model":
@@ -271,36 +316,53 @@ class SmartRouter:
                     continue
 
                 model_denendi = True
-                log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
+                
+                # Quota retry döngüsü (max 3 deneme)
+                max_retries = 3
+                for attempt in range(max_retries):
+                    log_ekle(f" 🚀 {mail} ile {model_adi} deneniyor...")
 
-                try:
-                    client = genai.Client(api_key=api_key)
+                    try:
+                        client = genai.Client(api_key=api_key)
 
-                    arama_bu_modelde_aktif = arama_kullan and model_arama_destekliyor_mu(model_adi)
-                    config_parametreleri = dict(
-                        system_instruction=system_prompt,
-                        response_mime_type="application/json",
-                        response_schema=response_schema,
-                    )
-                    if arama_bu_modelde_aktif:
-                        config_parametreleri["tools"] = [types.Tool(google_search=types.GoogleSearch())]
-                        log_ekle(f" 🔎 {model_adi} için güncel bilgi araması aktif")
+                        arama_bu_modelde_aktif = arama_kullan and model_arama_destekliyor_mu(model_adi)
+                        config_parametreleri = dict(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json",
+                            response_schema=response_schema,
+                        )
+                        if arama_bu_modelde_aktif:
+                            config_parametreleri["tools"] = [types.Tool(google_search=types.GoogleSearch())]
+                            log_ekle(f" 🔎 {model_adi} için güncel bilgi araması aktif")
 
-                    response = client.models.generate_content(
-                        model=model_adi,
-                        contents=video_icerigi,
-                        config=types.GenerateContentConfig(**config_parametreleri),
-                    )
-                    veri = guvenli_json_yukle(getattr(response, "text", ""))
-                    log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
-                    time.sleep(IP_BAN_KORUMA)
-                    return veri, f"{mail}+{model_adi}"
+                        response = client.models.generate_content(
+                            model=model_adi,
+                            contents=video_icerigi,
+                            config=types.GenerateContentConfig(**config_parametreleri),
+                        )
+                        veri = guvenli_json_yukle(getattr(response, "text", ""))
+                        log_ekle(f" ✅ Başarılı → {mail} + {model_adi}")
+                        time.sleep(IP_BAN_KORUMA)
+                        return veri, f"{mail}+{model_adi}"
 
-                except Exception as e:
-                    son_hata = e
-                    aksiyon = self._handle_hata(mail, model_adi, str(e), log_ekle)
-                    if aksiyon == "break_model":
-                        break
+                    except Exception as e:
+                        son_hata = e
+                        aksiyon = self._handle_hata(mail, model_adi, str(e), log_ekle)
+                        
+                        if aksiyon == "retry":
+                            # Quota hatası - aynı key ile tekrar dene
+                            if attempt < max_retries - 1:
+                                continue
+                            else:
+                                log_ekle(f" ⚠️ {mail} + {model_adi} {max_retries} denemede de başarısız")
+                                break
+                        elif aksiyon == "break_model":
+                            break
+                        else:
+                            break  # devam - diğer key'e geç
+                
+                if aksiyon == "break_model":
+                    break
 
             if not model_denendi:
                 log_ekle(f" ⏸️ {model_adi} tüm key'ler için banlı, atlanıyor")
@@ -543,6 +605,7 @@ gunlugu_ciz()
 # ÜRETİM
 # ------------------------------------------------------------
 if buton_tiklandi:
+    sekmeyi_aktif_tut()  # Safari arka plan koruması - ÜRETİM başladığında aktif
     st.session_state.log_satirlari = []
     log_ekle("🚀 Üretim başladı...")
 
@@ -688,37 +751,79 @@ if st.session_state.sonuc:
 
     st.success(f"✅ Başarılı! ({kullanilan_metin_modeli})")
 
-    if st.button("🔄 Temizle", use_container_width=True):
-        st.session_state.sonuc = None
-        st.session_state.log_satirlari = []
-        st.rerun()
+    c1, c2 = st.columns([3, 1])
+    with c2:
+        if st.button("🔄 Temizle", use_container_width=True):
+            st.session_state.sonuc = None
+            st.session_state.log_satirlari = []
+            st.rerun()
 
+    st.markdown("### 🎧 Medya")
+    st.markdown(f"**🎙️ Seslendirme** (model: {kullanilan_ses_modeli})")
     if ses_basarili and os.path.exists(ses_dosyasi):
         with open(ses_dosyasi, "rb") as f:
             ses_byte = f.read()
         st.audio(ses_byte, format="audio/wav")
         st.download_button(
-            f"⬇️ Ses İndir",
+            f"⬇️ {secilen_ses_ingilizce} Sesini İndir (.wav)",
             ses_byte, file_name="seslendirme.wav", mime="audio/wav",
-            use_container_width=True
         )
         try:
             os.remove(ses_dosyasi)
         except Exception:
             pass
+    else:
+        st.warning("Ses dosyası bulunamadı.")
 
-    st.markdown("---")
-    
-    # Tek kolon - dikey akış (mobile için)
-    st.markdown("**📝 Reels Caption**")
-    st.code(markdown_temizle(veri.get("reels_aciklamasi", "")), language=None)
-    
-    st.markdown("**🎭 Kapak Başlıkları**")
-    st.code(kapak_basliklarini_formatla(veri.get("kapak_basliklari")), language=None)
-    
-    st.markdown("**🧵 Threads**")
-    st.code(markdown_temizle(veri.get("threads_aciklamasi", "")), language=None)
+    st.divider()
+    st.markdown("### 📝 Metin İçerikleri")
+    col1, col2, col3 = st.columns(3)
 
-    with st.expander("🎙️ Seslendirme Metni"):
-        st.code(markdown_temizle(veri.get("seslendirme_metni", "")), language=None)
+    with col1:
+        st.subheader("1️⃣ Reels Açıklaması")
+        st.caption("Katmanlı caption + 5 hashtag")
+        st.code(markdown_temizle(veri.get("reels_aciklamasi", "")), language=None)
 
+    with col2:
+        st.subheader("2️⃣ Kapak Başlıkları")
+        st.caption("5 alternatif")
+        st.code(kapak_basliklarini_formatla(veri.get("kapak_basliklari")), language=None)
+
+    with col3:
+        st.subheader("3️⃣ Threads Açıklaması")
+        st.caption(f"Kısa, sohbet havasında, hashtagsiz (Model: {kullanilan_threads_modeli})")
+        st.code(markdown_temizle(veri.get("threads_aciklamasi", "")), language=None)
+
+    # SESLENDİRME METNİ - Ana çıktı olarak düzenlenebilir
+    st.divider()
+    st.markdown("### 🎙️ Seslendirme Metni")
+    st.caption("TTS için üretilen metin. Düzenleyip yeniden ses üretebilirsiniz.")
+
+    duzenlenmis_ses_metni = st.text_area(
+        "Seslendirme Metni",
+        value=veri.get("seslendirme_metni", ""),
+        height=300,
+        label_visibility="collapsed"
+    )
+
+    if st.button("🔄 Bu Metinle Yeniden Ses Üret"):
+        with st.spinner("Ses üretiliyor..."):
+            yeni_ses_dosyasi = os.path.join(tempfile.gettempdir(), f"ses_{uuid.uuid4().hex[:8]}.wav")
+            ses_basarili_yeni, kullanilan_ses_yeni = router.ses_uret(
+                duzenlenmis_ses_metni, secilen_ses_ingilizce, yeni_ses_dosyasi, log_ekle
+            )
+            if ses_basarili_yeni and os.path.exists(yeni_ses_dosyasi):
+                with open(yeni_ses_dosyasi, "rb") as f:
+                    yeni_ses_byte = f.read()
+                st.audio(yeni_ses_byte, format="audio/wav")
+                st.download_button(
+                    f"⬇️ Yeniden Üretilen Sesi İndir (.wav)",
+                    yeni_ses_byte, file_name="seslendirme_yeni.wav", mime="audio/wav",
+                )
+                try:
+                    os.remove(yeni_ses_dosyasi)
+                except Exception:
+                    pass
+                st.success("✅ Yeni ses başarıyla üretildi!")
+            else:
+                st.error("❌ Ses üretilemedi.")
