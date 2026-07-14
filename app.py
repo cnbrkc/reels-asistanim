@@ -761,7 +761,8 @@ if buton_tiklandi:
         }
 
         veri, kullanilan_metin_modeli = router.metin_uret(
-            video_icerigi, system_prompt, response_schema, log_ekle
+            video_icerigi, system_prompt, response_schema, log_ekle,
+            arama_kullan=False  # JSON modunda Google Search aracı kullanılamaz
         )
 
         # ADIM 3: Threads Üretimi (%60-80)
