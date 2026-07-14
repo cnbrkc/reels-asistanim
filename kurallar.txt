@@ -120,12 +120,12 @@ Güncel bir olay varsa doğal şekilde ekle.
 
 6. ETİKET (HASHTAG) KURALLARI
 TOPLAM TAM 5 etiket.
-Dağılım: 1 marka (#otoXtra sabit), 1–2 geniş konu (1M+ post), 1–2 orta niş (50K–1M post), 1 konu özel (50K altı).
+Dağılım: 1 marka (sayfanın kimliğine uygun; genellikle #otoXtra tercih edilir ama içeriğe göre değişebilir), 1–2 geniş konu (1M+ post), 1–2 orta niş (50K–1M post), 1 konu özel (50K altı).
 Hashtag'ler caption anahtar kelimelerini DESTEKLEMELİ, çelişmemeli.
 Türkçe ağırlıklı, MAX 1 İngilizce (sadece uluslararası marka adı). #carlovers #carsofinstagram KULLANMA.
 Türkçe karakter doğru kullan. Karaktersiz versiyon daha aktifse onu tercih et.
 YASAKLI: #keşfet #fyp #foryou #viral #trend #reels #instagram #takip #beğen #like
-Biçim: Küçük harf (#otoXtra hariç), tek satır, arası 1 boşluk, captiondan 2 boş satır sonra. Sıra: marka→geniş→orta niş→konu özel.
+Biçim: Küçük harf (özel isimler hariç), tek satır, arası 1 boşluk, captiondan 2 boş satır sonra. Sıra: marka→geniş→orta niş→konu özel.
 
 7. ENGAGEMENT BAIT YASAĞI
 Tüm çıktı için geçerli.
