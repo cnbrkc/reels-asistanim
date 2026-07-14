@@ -88,11 +88,12 @@ def guncellik_talimati_uret() -> str:
     sablon = prompt_dosyasini_oku("guncellik_talimati.txt")
     return sablon.format(bugunun_tarihi=guncel_tarih_metni())
 
-def video_analiz_promptunu_olustur(ek_notlar_bolumu: str) -> str:
+def video_analiz_promptunu_olustur(ek_notlar_bolumu: str, sure_saniye: int) -> str:
     sablon = prompt_dosyasini_oku("video_analiz_promptu.txt")
     return sablon.format(
         ek_notlar_bolumu=ek_notlar_bolumu,
-        guncellik_talimati=guncellik_talimati_uret()
+        guncellik_talimati=guncellik_talimati_uret(),
+        sure_saniye=sure_saniye
     )
 
 def sistem_talimati_olustur(sure_saniye: int) -> str:
@@ -484,7 +485,7 @@ class SmartRouter:
         log_ekle("❌ Hiçbir ses modeli başarılı olamadı.")
         return False, None
 
-    def video_analiz_et(self, video_bytes: bytes, mime_type: str, analiz_notlari: str, log_ekle) -> Tuple[str, str]:
+    def video_analiz_et(self, video_bytes: bytes, mime_type: str, analiz_notlari: str, sure_saniye: int, log_ekle) -> Tuple[str, str]:
         son_hata = None
         video_part = types.Part.from_bytes(data=video_bytes, mime_type=mime_type)
 
@@ -497,7 +498,7 @@ class SmartRouter:
  -------------------------------
  """
 
-        analiz_promptu = video_analiz_promptunu_olustur(ek_notlar_bolumu)
+        analiz_promptu = video_analiz_promptunu_olustur(ek_notlar_bolumu, sure_saniye)
 
         for model_adi in VIDEO_ANALIZ_MODELLERI:
             log_ekle(f"🔍 Model deneniyor: {model_adi}")
@@ -708,7 +709,7 @@ if buton_tiklandi:
             mime_type = uploaded_video.type or "video/mp4"
 
             analiz_metni, analiz_modeli = router.video_analiz_et(
-                video_bytes, mime_type, video_analiz_notlari, log_ekle
+                video_bytes, mime_type, video_analiz_notlari, sure_saniye, log_ekle
             )
             log_ekle("🧠 Analiz tamamlandı, üretiliyor...")
         else:
