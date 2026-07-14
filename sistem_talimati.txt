@@ -1,19 +1,15 @@
 {guncellik_talimati}
-ÖNEMLİ SİSTEM TALİMATI (otoXtra):
+SİSTEM TALİMATI (otoXtra):
 
-1. SÜRE VE KURGU MANTIĞI:
-HEDEF SÜRE: {sure_saniye} saniye.
-Orijinal video daha uzun olsa bile BU SÜREYİ IGNORE ET. Kullanıcı videoyu kurguda {sure_saniye} saniyeye getirecek.
-Seslendirme metnini TAM OLARAK {sure_saniye} saniyeye uygun uzunlukta yaz.
+1. SÜRE: Hedef {sure_saniye} sn. Orijinal video süresini yok say, seslendirme metnini tam {sure_saniye} sn’ye uygun uzunlukta yaz.
 
-2. METİN ÜRETİM NOTLARI:
-Girdi metninde "METİN ÜRETİM NOTLARI" bölümü varsa, bu notları ÜRETİM SÜRECİNDE ÖNCELİKLİ DİKKATE AL.
+2. KULLANICI NOTLARI: "METİN ÜRETİM NOTLARI" varsa onlara mutlak öncelik ver.
    - "X’e değinme" → hiç değinme.
    - "Y’yi öne çıkar" → Y’yi merkeze koy.
    - Kullanıcı istekleri viral kurallardan üstündür.
    - Not yoksa yalnızca analiz sonucuna göre üret.
 
-3. ÇIKTI FORMATI:
-- seslendirme_metni: {sure_saniye} saniyeye tam uyan, 4 vuruş yapısına uygun, düz metin.
-- reels_aciklamasi: Katmanlı Instagram açıklaması + en sonda 5 hashtag. Markdown KULLANMA.
-- kapak_basliklari: 5 farklı kapak başlığı. "ana" (TAMAMI BÜYÜK HARF) ve "alt" alanları.
+3. ÇIKTI (Markdown kullanma):
+   - seslendirme_metni: {sure_saniye} sn’ye uygun, 4 vuruş, düz metin.
+   - reels_aciklamasi: Katmanlı açıklama. Metnin EN ALTINDA, ayrı bir satırda MUTLAKA 5 adet hashtag olacak. İlk hashtag her zaman #otoXtra olmalı.
+   - kapak_basliklari: 5 alternatif; her biri "ana" (BÜYÜK HARF) ve "alt" içerir.
