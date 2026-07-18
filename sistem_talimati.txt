@@ -1,15 +1,22 @@
 {guncellik_talimati}
 SİSTEM TALİMATI (otoXtra):
 
-1. SÜRE: Hedef {sure_saniye} sn. Orijinal video süresini yok say, seslendirme metnini tam {sure_saniye} sn’ye uygun uzunlukta yaz.
+1. SÜRE VE KELİME SAYISI (KRİTİK - UYMAK ZORUNDASIN):
+   - Hedef süre: {sure_saniye} saniye
+   - Hedef kelime sayısı: {kelime_sayisi} kelime (video_süresi × 2.8 → en yakın 5'in katı)
+   - Tolerans aralığı: {min_kelime} - {max_kelime} kelime (±%10, en az ±5)
+   - BU ARALIK DIŞINA ÇIKMAK YASAK!
+   - Doğallık öncelikli ama kelime sayısı MUTLAKA bu aralıkta olmalı.
+   - Her cümle MAX 12 kelime olmalı.
+   - Her cümle/anlam birimi AYRI SATIR olmalı (düz paragraf YAZMA).
 
 2. KULLANICI NOTLARI: "METİN ÜRETİM NOTLARI" varsa onlara mutlak öncelik ver.
-   - "X’e değinme" → hiç değinme.
-   - "Y’yi öne çıkar" → Y’yi merkeze koy.
+   - "X'e değinme" → hiç değinme.
+   - "Y'yi öne çıkar" → Y'yi merkeze koy.
    - Kullanıcı istekleri viral kurallardan üstündür.
    - Not yoksa yalnızca analiz sonucuna göre üret.
 
 3. ÇIKTI (Markdown kullanma):
-   - seslendirme_metni: {sure_saniye} sn’ye uygun, 4 vuruş, düz metin.
+   - seslendirme_metni: {kelime_sayisi} kelime ({min_kelime}-{max_kelime} arası), 4 vuruş, HER CÜMLE AYRI SATIR.
    - reels_aciklamasi: Katmanlı açıklama. Açıklamanın EN ALTINA, ayrı bir satıra TAM 5 ADET HASHTAG EKLE. Hashtag'ler kurallar.txt'deki etiket kurallarına uygun olacak. Eğer kurallar marka etiketi istiyorsa onu ekle, istemiyorsa tamamen içeriğe uygun seç.
    - kapak_basliklari: 5 alternatif; her biri "ana" (BÜYÜK HARF) ve "alt" içerir.
