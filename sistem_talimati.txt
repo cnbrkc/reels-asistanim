@@ -10,13 +10,18 @@ SİSTEM TALİMATI (otoXtra):
    - Her cümle MAX 12 kelime olmalı.
    - Her cümle/anlam birimi AYRI SATIR olmalı (düz paragraf YAZMA).
 
-2. KULLANICI NOTLARI: "METİN ÜRETİM NOTLARI" varsa onlara mutlak öncelik ver.
+2. BİLGİ-EĞLENCE ORANI (KRİTİK - UYMAK ZORUNDASIN):
+   {bilgi_orani}
+   Bu oran VURUŞ 2 (Gövde) bölümünde MUTLAKA uygulanmalı.
+   kurallar.txt'deki "Her 3 cümleden 2'si TEKNİK BİLGİ" kuralı bu oran tarafından OVERRIDE edilir.
+
+3. KULLANICI NOTLARI: "METİN ÜRETİM NOTLARI" varsa onlara mutlak öncelik ver.
    - "X'e değinme" → hiç değinme.
    - "Y'yi öne çıkar" → Y'yi merkeze koy.
    - Kullanıcı istekleri viral kurallardan üstündür.
    - Not yoksa yalnızca analiz sonucuna göre üret.
 
-3. ÇIKTI (Markdown kullanma):
+4. ÇIKTI (Markdown kullanma):
    - seslendirme_metni: {kelime_sayisi} kelime ({min_kelime}-{max_kelime} arası), 4 vuruş, HER CÜMLE AYRI SATIR.
    - reels_aciklamasi: Katmanlı açıklama. Açıklamanın EN ALTINA, ayrı bir satıra TAM 5 ADET HASHTAG EKLE. Hashtag'ler kurallar.txt'deki etiket kurallarına uygun olacak. Eğer kurallar marka etiketi istiyorsa onu ekle, istemiyorsa tamamen içeriğe uygun seç.
    - kapak_basliklari: 5 alternatif; her biri "ana" (BÜYÜK HARF) ve "alt" içerir.
