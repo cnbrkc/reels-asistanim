@@ -258,25 +258,54 @@ def eski_ses_dosyalarini_temizle() -> None:
             st.session_state.gecici_ses_dosyalari.remove(dosya)
 
 # ------------------------------------------------------------
-# SEKMEYİ AKTİF TUT (Safari arka plan koruması)
+# SEKMEYİ AKTİF TUT (Arka Plan Uyuma Koruması - Wake Lock API)
 # ------------------------------------------------------------
 def sekmeyi_aktif_tut() -> None:
     components.html("""
     <script>
-    try {
-        var audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        var oscillator = audioContext.createOscillator();
-        var gainNode = audioContext.createGain();
-        gainNode.gain.value = 0.001;
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        oscillator.start(0);
-        window.addEventListener('beforeunload', function() {
-            oscillator.stop();
-        });
-    } catch(e) {
-        console.log("Audio context hatası:", e);
+    async function keepAlive() {
+        // 1. WAKE LOCK API (Ekranın kilitlenmesini ve kararmasını engeller)
+        if ('wakeLock' in navigator) {
+            try {
+                let wakeLock = await navigator.wakeLock.request('screen');
+                console.log('Ekran kilidi engellendi (Wake Lock aktif)');
+                
+                // Sekme tekrar ön plana gelirse Wake Lock'u yenile
+                document.addEventListener('visibilitychange', async () => {
+                    if (wakeLock !== null && document.visibilityState === 'visible') {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                    }
+                });
+            } catch (err) {
+                console.log('Wake Lock hatası:', err);
+            }
+        }
+
+        // 2. AUDIO CONTEXT (Tarayıcının arka planda JS'i dondurmasını engeller)
+        try {
+            var audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            var oscillator = audioContext.createOscillator();
+            var gainNode = audioContext.createGain();
+            gainNode.gain.value = 0.00001; // İnsan kulağı duymaz ama sistem çalışır
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // iOS Safari bazen sesi durdurur, 2 saniyede bir kontrol edip yeniden başlat
+            setInterval(() => {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+            }, 2000);
+
+            oscillator.start(0);
+            window.addEventListener('beforeunload', function() {
+                oscillator.stop();
+            });
+        } catch(e) {
+            console.log("Audio context hatası:", e);
+        }
     }
+    keepAlive();
     </script>
     """, height=0)
 
@@ -690,7 +719,7 @@ with c2:
 
 sure_saniye = st.number_input("⏱️ Hedef Süre (sn)", min_value=5, max_value=180, value=30, step=5)
 
-# 🎯 YENİ: İÇERİK TONU SEÇİCİ
+# 🎯 İÇERİK TONU SEÇİCİ
 icerik_tonu = st.radio(
     "🎯 İçerik Tonu",
     ["🎭 Eğlence Ağırlıklı (%25 bilgi)", "⚖️ Dengeli (%50 bilgi)", "🧠 Bilgi Ağırlıklı (%75 bilgi)", "📊 Teknik Odaklı (%90 bilgi)"],
@@ -772,7 +801,7 @@ if buton_tiklandi:
         BENIM_GEM_KURALLARIM = prompt_dosyasini_oku("kurallar.txt")
         system_prompt = BENIM_GEM_KURALLARIM + sistem_talimati_olustur(sure_saniye, icerik_tonu)
 
-        # GÜNCELLENMİŞ JSON ŞEMASI (3 Aşamalı Düşünme Zinciri İçerir)
+        # JSON ŞEMASI (3 Aşamalı Düşünme Zinciri İçerir)
         response_schema = {
             "type": "OBJECT",
             "properties": {
