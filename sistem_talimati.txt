@@ -21,7 +21,8 @@ SİSTEM TALİMATI (otoXtra):
    - Kullanıcı istekleri viral kurallardan üstündür.
    - Not yoksa yalnızca analiz sonucuna göre üret.
 
-4. ÇIKTI (Markdown kullanma):
+4. ÇIKTI FORMATI (JSON ŞEMASI İLE UYUMLU OLMALI):
    - seslendirme_metni: {kelime_sayisi} kelime ({min_kelime}-{max_kelime} arası), 4 vuruş, HER CÜMLE AYRI SATIR.
-   - reels_aciklamasi: Katmanlı açıklama. Açıklamanın EN ALTINA, ayrı bir satıra TAM 5 ADET HASHTAG EKLE. Hashtag'ler kurallar.txt'deki etiket kurallarına uygun olacak. Eğer kurallar marka etiketi istiyorsa onu ekle, istemiyorsa tamamen içeriğe uygun seç.
+   - reels_aciklamasi: Katmanlı açıklama metni. (HASHTAGLERİ BURAYA YAZMA, SADECE METNİ ÜRET).
+   - reels_hashtagleri: kurallar.txt'deki etiket kurallarına uygun TAM 5 ADET hashtagden oluşan bir dizi (array).
    - kapak_basliklari: 5 alternatif; her biri "ana" (BÜYÜK HARF) ve "alt" içerir.
