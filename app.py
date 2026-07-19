@@ -772,9 +772,22 @@ if buton_tiklandi:
         BENIM_GEM_KURALLARIM = prompt_dosyasini_oku("kurallar.txt")
         system_prompt = BENIM_GEM_KURALLARIM + sistem_talimati_olustur(sure_saniye, icerik_tonu)
 
+        # GÜNCELLENMİŞ JSON ŞEMASI (3 Aşamalı Düşünme Zinciri İçerir)
         response_schema = {
             "type": "OBJECT",
             "properties": {
+                "beyin_firtinasi": {
+                    "type": "STRING",
+                    "description": "Seslendirme metnini yazmadan ÖNCE buraya stratejini yaz. Videodaki görsel akışa göre 4 vuruşu nasıl eşleştireceğini ve Türk psikolojisine hangi senaryoyu sokacağını planla."
+                },
+                "veri_kilitleme": {
+                    "type": "STRING",
+                    "description": "Video analizinden ve internet aramasından gelen tüm kesin rakamları (fiyat, beygir, 0-100 vb.) buraya listele. Metni yazarken SADECE bu rakamları kullan."
+                },
+                "oz_elestiri": {
+                    "type": "STRING",
+                    "description": "Kendi planını kurallar.txt'ye göre denetle: Kelime sayısı aralığında mı, Loop (sonsuz döngü) var mı, yasaklı kelimeler var mı? Hata bulursan asıl metni yazarken düzelt."
+                },
                 "seslendirme_metni": {"type": "STRING"},
                 "reels_aciklamasi": {"type": "STRING"},
                 "reels_hashtagleri": {
@@ -791,7 +804,7 @@ if buton_tiklandi:
                     },
                 },
             },
-            "required": ["seslendirme_metni", "reels_aciklamasi", "reels_hashtagleri", "kapak_basliklari"],
+            "required": ["beyin_firtinasi", "veri_kilitleme", "oz_elestiri", "seslendirme_metni", "reels_aciklamasi", "reels_hashtagleri", "kapak_basliklari"],
         }
 
         veri, kullanilan_metin_modeli = router.metin_uret(
@@ -828,7 +841,6 @@ GÖREV: Bu Instagram açıklamasını Threads ve X için daha sohbet havasında,
             veri["threads_aciklamasi"] = str(threads_veri.get("threads_aciklamasi", "")).strip()
         except Exception as threads_hata:
             log_ekle(f"⚠️ Threads hatası, fallback kullanılıyor: {str(threads_hata)[:100]}")
-            # HASHTAG SİLME MANTIĞI KALDIRILDI, ÇÜNKÜ ARTIK AÇIKLAMADA HASHTAG YOK
             fallback = veri.get("reels_aciklamasi", "").strip()
             fallback = re.sub(r"\s+", " ", fallback).strip()
             veri["threads_aciklamasi"] = fallback[:500].rstrip()
@@ -964,6 +976,18 @@ if st.session_state.sonuc:
         st.subheader("3️⃣ Threads Açıklaması")
         st.caption(f"Kısa, sohbet havasında, hashtagsiz (Model: {kullanilan_threads_modeli})")
         st.code(markdown_temizle(veri.get("threads_aciklamasi", "")), language=None)
+
+    st.divider()
+    st.markdown("### 🧠 AI Düşünme Zinciri (Strateji)")
+    with st.expander("Yapay Zekanın İç Monoloğunu Gör (Nasıl Karar Verdi?)"):
+        st.markdown("**1. Beyin Fırtınası:**")
+        st.info(veri.get("beyin_firtinasi", "Veri bulunamadı."))
+        
+        st.markdown("**2. Veri Kilitleme:**")
+        st.warning(veri.get("veri_kilitleme", "Veri bulunamadı."))
+        
+        st.markdown("**3. Öz Eleştiri:**")
+        st.error(veri.get("oz_elestiri", "Veri bulunamadı."))
 
     st.divider()
     st.markdown("### 🎙️ Seslendirme Metni")
