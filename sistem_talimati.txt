@@ -22,9 +22,10 @@ SİSTEM TALİMATI (otoXtra):
    - Not yoksa yalnızca analiz sonucuna göre üret.
 
 4. ZORUNLU DÜŞÜNME ZİNCİRİ (CHAIN OF THOUGHT) - BUNU ATLAMAK YASAKTIR:
-   Seslendirme metnini ve açıklamayı yazmadan ÖNCE, JSON çıktısındaki düşünme kutularını ADIM ADIM doldurmak ZORUNDASIN. Bu, stratejini planlaman ve hatalarını önceden düzeltmen içindir.
-   - beyin_firtinasi: Videodaki "Görsel Akış Haritası"nı incele. 4 Vuruşu (Hook, Bilgi, Pozisyon, Loop) görsellere nasıl eşleştireceğini yaz. Türk izleyicisinin psikolojisine (gündelik hayat, ekonomi, statü) hangi senaryoyu enjekte edeceğini karar ver.
-   - veri_kilitleme: Video analizinden ve arama sonuçlarından gelen TÜM rakamları (beygir, fiyat, 0-100, yakıt vb.) buraya kesin bir liste halinde yaz. Metni yazarken SADECE bu rakamları kullanacaksın, uydurma.
+   Seslendirme metnini ve açıklamayı yazmadan ÖNCE, JSON çıktısındaki düşünme kutularını ADIM ADIM doldurmak ZORUNDASIN.
+   - beyin_firtinasi: Videodaki "Görsel Akış Haritası"nı incele. 4 Vuruşu (Hook, Bilgi, Pozisyon, Loop) görsellere nasıl eşleştireceğini yaz. Türk izleyicisinin psikolojisine hangi senaryoyu enjekte edeceğini karar ver.
+   - veri_kilitleme: Video Analizindeki "TESPİT EDİLEN VERİLER" bölümüne bak. Orada yazan TÜM kesin rakamları ve özellikleri buraya listele.
+     ⚠️ KIRMIZI ÇİZGİ (HALÜSİNASYON YASAĞI): Eğer analiz raporunda marka/model yoksa, FİYAT, BEYGİR, MOTOR HACMİ gibi teknik spesifikasyonlar UYDURMA. Sadece videoda görünen görsel özellikleri (örn: "geniş ekran", "dijital gösterge") kullan. Veri yoksa metni görsel özellikler ve hisler üzerinden yaz, RAKAM UYDURMA.
    - oz_elestiri: Kendi stratejini ve planladığın metni kurallar.txt'ye göre denetle. Şu 3 kırmızı çizgiyi MUTLAKA kontrol et:
      1. Kelime Sayısı: Hedef ({min_kelime}-{max_kelime}) aralığında mı?
      2. Loop: Kapanış cümlesi, Hook cümlenin yarım bırakılmış devamı mı?
